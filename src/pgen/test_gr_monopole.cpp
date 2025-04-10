@@ -281,28 +281,25 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // initialize primitive variables for new run ---------------------------------------
 
-  Real r_s = 2.0;
-  Real R_LC = 10.0;
+  Real r_s = 5.0;
+  Real R_LC = 10.0*r_s;
   auto &size = pmbp->pmb->mb_size;
   auto &b0 = pmbp->pmhd->b0;
   auto &e0 = pmbp->pmhd->efld;
-  Kokkos::Random_XorShift64_Pool<> rand_pool64(pmbp->gids);
-  Real ptotmax = std::numeric_limits<float>::min();
-  const int nmkji = (pmbp->nmb_thispack)*indcs.nx3*indcs.nx2*indcs.nx1;
-  const int nkji = indcs.nx3*indcs.nx2*indcs.nx1;
-  const int nji  = indcs.nx2*indcs.nx1;
+  int &ng = indcs.ng;
+  int n1 = indcs.nx1 + 2*ng;
+  int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
+  int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
 
-  par_for("pgen_monopole",DevExeSpace(),0,(nmb-1),ks,ke,js,je,is,ie,
+  par_for("pgen_monopole", DevExeSpace(),0,(nmb-1),0,(n3-1),0,(n2-1),0,(n1-1),
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
 
     Real &x1min = size.d_view(m).x1min;
     Real &x1max = size.d_view(m).x1max;
     Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
-
     Real &x2min = size.d_view(m).x2min;
     Real &x2max = size.d_view(m).x2max;
     Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
-
     Real &x3min = size.d_view(m).x3min;
     Real &x3max = size.d_view(m).x3max;
     Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
@@ -347,7 +344,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     w0_(m,IVY,k,j,i) = uu2;
     w0_(m,IVZ,k,j,i) = uu3;
 
-    if (r < r_s) {
+    if (r < 1.0) {
       b0.x1f(m,k,j,i) = 0.0;
       b0.x2f(m,k,j,i) = 0.0;
       b0.x3f(m,k,j,i) = 0.0;
@@ -355,9 +352,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       e0.x2e(m,k,j,i) = 0.0;
       e0.x3e(m,k,j,i) = 0.0;
     } else {
-      Real D_theta = B0*(r_s/R_LC)*(r_s/r)*sin_theta;
+      Real D_theta = -B0*(r_s/R_LC)*(r_s/r)*sin_theta;
       Real B_phi = D_theta;
-      Real B_r = B0*SQR(r_s/r);
+      Real B_r = B0*(r_s/r)*(r_s/r);
       Real B_0, B_x, B_y, B_z;
       Real E_0, E_x, E_y, E_z;
     
