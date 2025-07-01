@@ -37,6 +37,7 @@
 #include "mhd/mhd.hpp"
 
 #include "particles/particles.hpp"
+#include "particles/hamiltonian_gr.hpp"
 
 #include <Kokkos_Random.hpp>
 
@@ -209,6 +210,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
               Real &x3min = size.d_view(m).x3min;
               Real &x3max = size.d_view(m).x3max;
               Real x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
+              if (x3max == 0.0 || x3min == 0.0 ){
+                x3v = 0.0;
+              }
               Real r, th, phi;
               GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &th, &phi);
               if (r >= min_rad){
@@ -217,6 +221,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                   x1v = x1min + prtcl_gen.frand()*(x1max - x1min);
                   x2v = x2min + prtcl_gen.frand()*(x2max - x2min);
                   x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
+                  if (x3max == 0.0 || x3min == 0.0 ){
+                    x3v = 0.0;
+                  }
                   GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &th, &phi);
                   ++try_this_mb;
                 }
@@ -238,13 +245,20 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                                 &ux0, &ux1, &ux2, &ux3);
                   Real gu[4][4], gl[4][4];
                   ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
+                  Real alpha = sqrt(-1.0/gu[0][0]);
+                  // ux1 = - alpha*gu[0][1]/gu[0][0];
+                  // ux2 = - alpha*gu[0][2]/gu[0][0];
+                  // ux3 = - alpha*gu[0][3]/gu[0][0];
                   Real u0 = gl[1][1]*SQR(ux1) + gl[2][2]*SQR(ux2) + gl[3][3]*SQR(ux3)
                         + 2.0*gl[1][2]*ux1*ux2 + 2.0*gl[1][3]*ux1*ux3
                         + 2.0*gl[3][2]*ux3*ux2;
-                  u0 = sqrt(u0 + massive); 
-                  pr(IPVX,p) = gl[1][1]*ux1 + gl[1][2]*ux2 + gl[1][3]*ux3;
-                  pr(IPVY,p) = gl[2][1]*ux1 + gl[2][2]*ux2 + gl[2][3]*ux3;
-                  pr(IPVZ,p) = gl[3][1]*ux1 + gl[3][2]*ux2 + gl[3][3]*ux3;
+                  u0 = 1.0;//sqrt(u0 + massive); 
+                  pr(IPVX,p) = 0.0; 	
+                  pr(IPVY,p) = 0.0; 	
+                  pr(IPVZ,p) = 0.0; 	
+                  // pr(IPVX,p) = gl[1][1]*ux1 + gl[1][2]*ux2 + gl[1][3]*ux3;
+                  // pr(IPVY,p) = gl[2][1]*ux1 + gl[2][2]*ux2 + gl[2][3]*ux3;
+                  // pr(IPVZ,p) = gl[3][1]*ux1 + gl[3][2]*ux2 + gl[3][3]*ux3;
                 } else {
                   // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
                   pr(IPVX,p) = sqrt(max_en);
@@ -281,7 +295,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
   // initialize primitive variables for new run ---------------------------------------
 
-  Real r_s = 5.0;
+  Real r_s = 3.0;
   Real R_LC = 10.0*r_s;
   auto &size = pmbp->pmb->mb_size;
   auto &b0 = pmbp->pmhd->b0;
@@ -296,22 +310,25 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
     Real &x1min = size.d_view(m).x1min;
     Real &x1max = size.d_view(m).x1max;
-    Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
+    Real x1v = LeftEdgeX(i-is, indcs.nx1, x1min, x1max);
     Real &x2min = size.d_view(m).x2min;
     Real &x2max = size.d_view(m).x2max;
-    Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
+    Real x2v = LeftEdgeX(j-js, indcs.nx2, x2min, x2max);
     Real &x3min = size.d_view(m).x3min;
     Real &x3max = size.d_view(m).x3max;
-    Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
+    Real x3v = LeftEdgeX(k-ks, indcs.nx3, x3min, x3max);
 
     // Extract metric and inverse
     Real glower[4][4], gupper[4][4];
     ComputeMetricAndInverse(x1v, x2v, x3v, coord.is_minkowski, coord.bh_spin,
                             glower, gupper);
 
-    // Calculate Boyer-Lindquist coordinates of cell
+    // Calculate spherical coordinates of cell
     Real r, theta, phi;
-    GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &theta, &phi);
+    r = sqrt(SQR(x1v) + SQR(x2v) + SQR(x3v));
+    phi = atan2(x2v, x1v);
+    theta = atan2(sqrt(SQR(x1v)+SQR(x2v)), x3v);
+    // GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &theta, &phi);
     Real sin_theta = sin(theta);
     Real cos_theta = cos(theta);
     Real sin_phi = sin(phi);
@@ -355,21 +372,41 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       Real D_theta = -B0*(r_s/R_LC)*(r_s/r)*sin_theta;
       Real B_phi = D_theta;
       Real B_r = B0*(r_s/r)*(r_s/r);
-      Real B_0, B_x, B_y, B_z;
-      Real E_0, E_x, E_y, E_z;
+      Real B_x, B_y, B_z;
+      Real E_x, E_y, E_z;
     
-      TransformVector(coord.bh_spin,
-                    0, B_r, 0, B_phi,
-                    x1v, x2v, x3v,
-                    &B_0, &B_x, &B_y, &B_z);
+      B_x = cos_phi*sin_theta*B_r - sin_phi*B_phi;
+      B_y = sin_phi*sin_theta*B_r + cos_phi*B_phi;
+      B_z = cos_theta*B_r;
       b0.x1f(m,k,j,i) = B_x;
       b0.x2f(m,k,j,i) = B_y;
       b0.x3f(m,k,j,i) = B_z;
 
-      TransformVector(coord.bh_spin,
-                    0, 0, D_theta, 0,
-                    x1v, x2v, x3v,
-                    &E_0, &E_x, &E_y, &E_z);
+      E_x = cos_theta*cos_phi*D_theta;
+      E_y = cos_theta*sin_phi*D_theta;
+      E_z = -sin_theta*D_theta;
+      Real adm_det; 
+      Real adm[3][3];
+      GetUpperAdmMetric( gupper, adm );
+      ComputeDeterminant3( adm, adm_det );
+      //Compute ExB drift 
+      // First need to convert electric field to normal frame
+      // Vector product results in covariant vector
+      Real E_beta[3] = {
+        - gupper[0][2]/gupper[0][0]*B_z + B_y*gupper[0][3]/gupper[0][0],
+        - gupper[0][3]/gupper[0][0]*B_x + B_z*gupper[0][1]/gupper[0][0],
+        - gupper[0][1]/gupper[0][0]*B_y + B_x*gupper[0][2]/gupper[0][0]
+      };
+      //for (int i = 0; i < 3; ++i ){ E_beta[i] /= adm_det; }
+      Real E_aux[3] = {0.0};
+      E_aux[0] = adm[0][0]*E_beta[0] + adm[0][1]*E_beta[1] + adm[0][2]*E_beta[2];
+      E_aux[1] = adm[1][0]*E_beta[0] + adm[1][1]*E_beta[1] + adm[1][2]*E_beta[2];
+      E_aux[2] = adm[2][0]*E_beta[0] + adm[2][1]*E_beta[1] + adm[2][2]*E_beta[2];
+      Real alpha = sqrt(-1/gupper[0][0]); 
+      E_x = E_x*alpha + E_aux[0];
+      E_y = E_y*alpha + E_aux[1];
+      E_z = E_z*alpha + E_aux[2];
+
       e0.x1e(m,k,j,i) = E_x;
       e0.x2e(m,k,j,i) = E_y;
       e0.x3e(m,k,j,i) = E_z;
