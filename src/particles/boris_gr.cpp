@@ -86,7 +86,7 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 		Real adm_det; 
 		ComputeDeterminant3( ADM_upper, adm_det );
 		// Determinant need is that of covariant metric
-		// adm_det = 1.0/adm_det;
+		adm_det = 1.0/adm_det;
 
 		// Electric field is stored in coordinate frame, need to combine with B to operate on velocity in normal frame
 		// Vector product results in covariant vector
