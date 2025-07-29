@@ -68,12 +68,6 @@ static void TransformVector(Real spin,
 
 void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   MeshBlockPack *pmbp = pmy_mesh_->pmb_pack;
-  if (!pmbp->pcoord->is_general_relativistic) {
-    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-              << "GR torus problem can only be run when GR defined in <coord> block"
-              << std::endl;
-    exit(EXIT_FAILURE);
-  }
 
   // capture variables for kernel
   auto &indcs = pmy_mesh_->mb_indcs;
@@ -232,33 +226,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                 }
                 found_mb = true;
                 if (!is_gca) {
-                  Real up0, up1, up2, up3;
-                  Real ux0, ux1, ux2, ux3;
-                  up3 = max_en;
-                  up0 = CalculateCovariantUT(coord.bh_spin, r, sin(th), up3);
-                  //up3 *= up0;
-                  
-                  // These velocities are contravariant
-                  TransformVector(coord.bh_spin,
-                                up0, 0, 0, up3,
-                                x1v, x2v, x3v,
-                                &ux0, &ux1, &ux2, &ux3);
-                  Real gu[4][4], gl[4][4];
-                  ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-                  Real alpha = sqrt(-1.0/gu[0][0]);
-                  // ux1 = - alpha*gu[0][1]/gu[0][0];
-                  // ux2 = - alpha*gu[0][2]/gu[0][0];
-                  // ux3 = - alpha*gu[0][3]/gu[0][0];
-                  Real u0 = gl[1][1]*SQR(ux1) + gl[2][2]*SQR(ux2) + gl[3][3]*SQR(ux3)
-                        + 2.0*gl[1][2]*ux1*ux2 + 2.0*gl[1][3]*ux1*ux3
-                        + 2.0*gl[3][2]*ux3*ux2;
-                  u0 = 1.0;//sqrt(u0 + massive); 
                   pr(IPVX,p) = 0.0; 	
                   pr(IPVY,p) = 0.0; 	
                   pr(IPVZ,p) = 0.0; 	
-                  // pr(IPVX,p) = gl[1][1]*ux1 + gl[1][2]*ux2 + gl[1][3]*ux3;
-                  // pr(IPVY,p) = gl[2][1]*ux1 + gl[2][2]*ux2 + gl[2][3]*ux3;
-                  // pr(IPVZ,p) = gl[3][1]*ux1 + gl[3][2]*ux2 + gl[3][3]*ux3;
                 } else {
                   // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
                   pr(IPVX,p) = sqrt(max_en);
@@ -403,9 +373,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       E_aux[1] = adm[1][0]*E_beta[0] + adm[1][1]*E_beta[1] + adm[1][2]*E_beta[2];
       E_aux[2] = adm[2][0]*E_beta[0] + adm[2][1]*E_beta[1] + adm[2][2]*E_beta[2];
       Real alpha = sqrt(-1/gupper[0][0]); 
-      E_x = E_x*alpha + E_aux[0];
-      E_y = E_y*alpha + E_aux[1];
-      E_z = E_z*alpha + E_aux[2];
+      E_x = E_x*alpha + E_aux[0]*adm_det;
+      E_y = E_y*alpha + E_aux[1]*adm_det;
+      E_z = E_z*alpha + E_aux[2]*adm_det;
 
       e0.x1e(m,k,j,i) = E_x;
       e0.x2e(m,k,j,i) = E_y;
