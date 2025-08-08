@@ -119,15 +119,15 @@ MeshBlock::MeshBlock(MeshBlockPack* ppack, int igids, int nmb) :
   }
 
   // For each DualArray: mark host views as modified, and then sync to device array
-  mb_gid.template modify<HostMemSpace>();
-  mb_lev.template modify<HostMemSpace>();
-  mb_size.template modify<HostMemSpace>();
-  mb_bcs.template modify<HostMemSpace>();
+  // mb_gid.template modify<HostMemSpace>();
+  // mb_lev.template modify<HostMemSpace>();
+  // mb_size.template modify<HostMemSpace>();
+  // mb_bcs.template modify<HostMemSpace>();
 
-  mb_gid.template sync<DevExeSpace>();
-  mb_lev.template sync<DevExeSpace>();
-  mb_size.template sync<DevExeSpace>();
-  mb_bcs.template sync<DevExeSpace>();
+  // mb_gid.template sync<DevExeSpace>();
+  // mb_lev.template sync<DevExeSpace>();
+  // mb_size.template sync<DevExeSpace>();
+  // mb_bcs.template sync<DevExeSpace>();
 }
 
 //----------------------------------------------------------------------------------------
@@ -423,8 +423,8 @@ void MeshBlock::SetNeighbors(std::unique_ptr<MeshBlockTree> &ptree, int *ranklis
   }    // end loop over all MeshBlocks
 
   // For each DualArray: mark host views as modified, and then sync to device array
-  nghbr.template modify<HostMemSpace>();
-  nghbr.template sync<DevExeSpace>();
+  // nghbr.template modify<HostMemSpace>();
+  // nghbr.template sync<DevExeSpace>();
 
   return;
 }

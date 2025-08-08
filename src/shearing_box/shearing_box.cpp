@@ -54,8 +54,8 @@ ShearingBoxBoundary::ShearingBoxBoundary(MeshBlockPack *ppack, ParameterInput *p
     x1bndry_mbgid.h_view(1,m) = tmp_ox1bndry_gid[m];
   }
   // sync with device
-  x1bndry_mbgid.template modify<HostMemSpace>();
-  x1bndry_mbgid.template sync<DevExeSpace>();
+  // x1bndry_mbgid.template modify<HostMemSpace>();
+  // x1bndry_mbgid.template sync<DevExeSpace>();
 
 
 #if MPI_PARALLEL_ENABLED

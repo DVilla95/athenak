@@ -49,10 +49,10 @@ void EOSCompOSE::ReadTableFromFile(std::string fname) {
     Kokkos::realloc(m_table, ECNVARS, m_nn, m_ny, m_nt);
 
     // Create host storage to read into
-    HostArray1D<Real>::HostMirror host_log_nb = create_mirror_view(m_log_nb);
-    HostArray1D<Real>::HostMirror host_yq =     create_mirror_view(m_yq);
-    HostArray1D<Real>::HostMirror host_log_t =  create_mirror_view(m_log_t);
-    HostArray4D<Real>::HostMirror host_table =  create_mirror_view(m_table);
+    auto host_log_nb = create_mirror_view(Kokkos::DefaultHostExecutionSpace(),m_log_nb);
+    auto host_yq =     create_mirror_view(Kokkos::DefaultHostExecutionSpace(),m_yq);
+    auto host_log_t =  create_mirror_view(Kokkos::DefaultHostExecutionSpace(),m_log_t);
+    auto host_table =  create_mirror_view(Kokkos::DefaultHostExecutionSpace(),m_table);
 
     { // read nb
       Real * table_nb = table["nb"];

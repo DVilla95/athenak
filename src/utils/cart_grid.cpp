@@ -175,8 +175,8 @@ void CartesianGrid::SetInterpolationIndices() {
   }
 
   // sync dual arrays
-  interp_indcs.template modify<HostMemSpace>();
-  interp_indcs.template sync<DevExeSpace>();
+  // interp_indcs.template modify<HostMemSpace>();
+  // interp_indcs.template sync<DevExeSpace>();
 
   return;
 }
@@ -246,8 +246,8 @@ void CartesianGrid::SetInterpolationWeights() {
   }
 
   // sync dual arrays
-  interp_wghts.template modify<HostMemSpace>();
-  interp_wghts.template sync<DevExeSpace>();
+  // interp_wghts.template modify<HostMemSpace>();
+  // interp_wghts.template sync<DevExeSpace>();
 
   return;
 }
@@ -303,8 +303,8 @@ void CartesianGrid::InterpolateToGrid(int ind, DvceArray5D<Real> &val) {
   });
 
   // sync dual arrays
-  interp_vals.template modify<DevExeSpace>();
-  interp_vals.template sync<HostMemSpace>();
+  // interp_vals.template modify<DevExeSpace>();
+  // interp_vals.template sync<HostMemSpace>();
 
   return;
 }

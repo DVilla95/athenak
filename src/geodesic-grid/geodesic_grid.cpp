@@ -315,28 +315,28 @@ GeodesicGrid::GeodesicGrid(int nlev, bool rotate, bool fluxes) :
     }
 
     // sync dual arrays
-    num_neighbors.template modify<HostMemSpace>();
-    num_neighbors.template sync<DevExeSpace>();
-    ind_neighbors.template modify<HostMemSpace>();
-    ind_neighbors.template sync<DevExeSpace>();
-    ind_neighbors_edges.template modify<HostMemSpace>();
-    ind_neighbors_edges.template sync<DevExeSpace>();
-    arc_lengths.template modify<HostMemSpace>();
-    arc_lengths.template sync<DevExeSpace>();
-    solid_angles.template modify<HostMemSpace>();
-    solid_angles.template sync<DevExeSpace>();
-    cart_pos.template modify<HostMemSpace>();
-    cart_pos.template sync<DevExeSpace>();
-    cart_pos_mid.template modify<HostMemSpace>();
-    cart_pos_mid.template sync<DevExeSpace>();
-    polar_pos.template modify<HostMemSpace>();
-    polar_pos.template sync<DevExeSpace>();
-    polar_pos_mid.template modify<HostMemSpace>();
-    polar_pos_mid.template sync<DevExeSpace>();
-    if (geo_fluxes) {
-      unit_flux.template modify<HostMemSpace>();
-      unit_flux.template sync<DevExeSpace>();
-    }
+    // num_neighbors.template modify<HostMemSpace>();
+    // num_neighbors.template sync<DevExeSpace>();
+    // ind_neighbors.template modify<HostMemSpace>();
+    // ind_neighbors.template sync<DevExeSpace>();
+    // ind_neighbors_edges.template modify<HostMemSpace>();
+    // ind_neighbors_edges.template sync<DevExeSpace>();
+    // arc_lengths.template modify<HostMemSpace>();
+    // arc_lengths.template sync<DevExeSpace>();
+    // solid_angles.template modify<HostMemSpace>();
+    // solid_angles.template sync<DevExeSpace>();
+    // cart_pos.template modify<HostMemSpace>();
+    // cart_pos.template sync<DevExeSpace>();
+    // cart_pos_mid.template modify<HostMemSpace>();
+    // cart_pos_mid.template sync<DevExeSpace>();
+    // polar_pos.template modify<HostMemSpace>();
+    // polar_pos.template sync<DevExeSpace>();
+    // polar_pos_mid.template modify<HostMemSpace>();
+    // polar_pos_mid.template sync<DevExeSpace>();
+    // if (geo_fluxes) {
+    //   unit_flux.template modify<HostMemSpace>();
+    //   unit_flux.template sync<DevExeSpace>();
+    // }
 
   } else if (nlevel==0) {  // one angle per octant
     // throw warning---this should only ever be used for testing
@@ -370,10 +370,10 @@ GeodesicGrid::GeodesicGrid(int nlev, bool rotate, bool fluxes) :
     }
 
     // sync dual arrays
-    solid_angles.template modify<HostMemSpace>();
-    solid_angles.template sync<DevExeSpace>();
-    cart_pos.template modify<HostMemSpace>();
-    cart_pos.template sync<DevExeSpace>();
+    // solid_angles.template modify<HostMemSpace>();
+    // solid_angles.template sync<DevExeSpace>();
+    // cart_pos.template modify<HostMemSpace>();
+    // cart_pos.template sync<DevExeSpace>();
 
   } else {  // invalid nlevel
     std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__

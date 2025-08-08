@@ -41,8 +41,8 @@ void ProblemGenerator::Hohlraum(ParameterInput *pin, const bool restart) {
       i_in.h_view(n,BoundaryFace::inner_x2) = (-1.0/(4.0*M_PI));
     }
   }
-  i_in.template modify<HostMemSpace>();
-  i_in.template sync<DevExeSpace>();
+  // i_in.template modify<HostMemSpace>();
+  // i_in.template sync<DevExeSpace>();
 
   // return if restart
   if (restart) return;
