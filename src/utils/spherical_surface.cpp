@@ -72,11 +72,11 @@ void SphericalSurface::InitializeAngleAndWeights() {
   }
 
   // sync to device
-  polar_pos.template modify<HostMemSpace>();
-  polar_pos.template sync<DevExeSpace>();
+  // polar_pos.template modify<HostMemSpace>();
+  // polar_pos.template sync<DevExeSpace>();
 
-  int_weights.template modify<HostMemSpace>();
-  int_weights.template sync<DevExeSpace>();
+  // int_weights.template modify<HostMemSpace>();
+  // int_weights.template sync<DevExeSpace>();
 }
 
 void SphericalSurface::InitializeRadius() {
@@ -87,8 +87,8 @@ void SphericalSurface::InitializeRadius() {
     cart_pos.h_view(n, 1) = radius * sin(phi) * sin(theta) + yc;
     cart_pos.h_view(n, 2) = radius * cos(theta) + zc;
   }
-  cart_pos.template modify<HostMemSpace>();
-  cart_pos.template sync<DevExeSpace>();
+  // cart_pos.template modify<HostMemSpace>();
+  // cart_pos.template sync<DevExeSpace>();
 }
 
 //----------------------------------------------------------------------------------------
@@ -141,8 +141,8 @@ void SphericalSurface::SetInterpolationIndices() {
   }
 
   // sync dual arrays
-  interp_indcs.template modify<HostMemSpace>();
-  interp_indcs.template sync<DevExeSpace>();
+  // interp_indcs.template modify<HostMemSpace>();
+  // interp_indcs.template sync<DevExeSpace>();
 
   return;
 }
@@ -214,8 +214,8 @@ void SphericalSurface::SetInterpolationWeights() {
   }
 
   // sync dual arrays
-  interp_wghts.template modify<HostMemSpace>();
-  interp_wghts.template sync<DevExeSpace>();
+  // interp_wghts.template modify<HostMemSpace>();
+  // interp_wghts.template sync<DevExeSpace>();
 
   return;
 }
@@ -270,8 +270,8 @@ void SphericalSurface::InterpolateToSphere(int var_ind,
       });
 
   // sync dual arrays
-  interp_vals.template modify<DevExeSpace>();
-  interp_vals.template sync<HostMemSpace>();
+  // interp_vals.template modify<DevExeSpace>();
+  // interp_vals.template sync<HostMemSpace>();
 
   return;
 }

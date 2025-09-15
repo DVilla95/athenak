@@ -124,8 +124,8 @@ void Z4c_AMR::RefineTracker(MeshBlockPack *pmbp) {
   }
 
   // sync host and device
-  refine_flag.template modify<HostMemSpace>();
-  refine_flag.template sync<DevExeSpace>();
+  // refine_flag.template modify<HostMemSpace>();
+  // refine_flag.template sync<DevExeSpace>();
 }
 
 // refine based on min{chi}
@@ -170,8 +170,8 @@ void Z4c_AMR::RefineChiMin(MeshBlockPack *pmbp) {
     });
 
   // sync host and device
-  refine_flag.template modify<DevExeSpace>();
-  refine_flag.template sync<HostMemSpace>();
+  // refine_flag.template modify<DevExeSpace>();
+  // refine_flag.template sync<HostMemSpace>();
 }
 
 // refine based on max{dchi}
@@ -219,8 +219,8 @@ void Z4c_AMR::RefineDchiMax(MeshBlockPack *pmbp) {
     });
 
   // sync host and device
-  refine_flag.template modify<DevExeSpace>();
-  refine_flag.template sync<HostMemSpace>();
+  // refine_flag.template modify<DevExeSpace>();
+  // refine_flag.template sync<HostMemSpace>();
 }
 
 // Enforce some minimum resolution within a certain spherical region
@@ -267,8 +267,8 @@ void Z4c_AMR::RefineRadii(MeshBlockPack *pmbp) {
   }
 
   // sync host and device
-  refine_flag.template modify<HostMemSpace>();
-  refine_flag.template sync<DevExeSpace>();
+  // refine_flag.template modify<HostMemSpace>();
+  // refine_flag.template sync<DevExeSpace>();
 }
 
 } // namespace z4c
