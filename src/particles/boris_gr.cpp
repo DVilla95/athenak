@@ -41,37 +41,37 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 	par_for("part_boris",DevExeSpace(),0,(npart-1),
 	KOKKOS_LAMBDA(const int p) {
       
-		// Contravariant and co-variant 4-velocities in the normal frame
+		// Co-variant 4-velocity in the coordinate frame
 		// To have compatibility with GR the velocity stored should be the covariant one
 		Real u_cov[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
-		Real u_con[3];
 		Real x[3] =  {pr(IPX,p), pr(IPY,p), pr(IPZ,p)}; // Position.
 		Real g_Lor;
-		// Get metric components at new location x1,x2,x3
+		// Get metric components at starting location x1,x2,x3
 		Real glower[4][4], gupper[4][4], ADM_upper[3][3]; // Metric 
 									 // (remember: sqrt(-1/gupper[0][0]) = alpha)
 		ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
 		// Compute 3x3 ADM spatial metric from metric 
 		GetUpperAdmMetric( gupper, ADM_upper );
-		// Raise indeces of u_cov
-		for (int i1 = 0; i1 < 3; ++i1 ){ 
-			u_con[i1] = 0.0;
-			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			u_con[i1] += ADM_upper[i1][i2]*u_cov[i2];
-			}
-		}
-		//Use definition of the Lorentz factor in ADM formalism
+		//Lorentz factor in Normal frame
 		g_Lor = ADM_upper[0][0]*SQR(u_cov[0]) + ADM_upper[1][1]*SQR(u_cov[1]) + ADM_upper[2][2]*SQR(u_cov[2])
 			+ 2.0*ADM_upper[0][1]*u_cov[0]*u_cov[1] + 2.0*ADM_upper[0][2]*u_cov[0]*u_cov[2] + 2.0*ADM_upper[1][2]*u_cov[1]*u_cov[2];
 		// In principle the 1.0 should be replaced by a 0 if
 		// the particle is massless, but I don't know of 
 		// any massless particle that can interact with an 
 		// electromagnetic field (unless one goes into quantum mechanics)
+    // Convert to Lorentz factor in coordinate frame i.e u^0
 		g_Lor = sqrt(1.0 + g_Lor)*sqrt(-gupper[0][0]);
 
-		x[0] = pr(IPX,p) + dt/(2.0)*(u_con[0]/g_Lor + gupper[0][1]/gupper[0][0]) ;
-		if (multi_d) { x[1] = pr(IPY,p) + dt/(2.0)*(u_con[1]/g_Lor + gupper[0][2]/gupper[0][0]) ; }
-		if (three_d) { x[2] = pr(IPZ,p) + dt/(2.0)*(u_con[2]/g_Lor + gupper[0][3]/gupper[0][0]) ; }
+		Real aux_vec[3] = {0.0};
+		//Raise indeces to contravariant for position push
+		for (int i1 = 0; i1 < 3; ++i1 ){ 
+			for (int i2 = 0; i2 < 3; ++i2 ){ 
+			aux_vec[i1] += ADM_upper[i1][i2]*u_cov[i2];
+			}
+		}
+		x[0] = pr(IPX,p) + dt/(2.0)*(aux_vec[0]/g_Lor + gupper[0][1]/gupper[0][0]) ;
+		if (multi_d) { x[1] = pr(IPY,p) + dt/(2.0)*(aux_vec[1]/g_Lor + gupper[0][2]/gupper[0][0]) ; }
+		if (three_d) { x[2] = pr(IPZ,p) + dt/(2.0)*(aux_vec[2]/g_Lor + gupper[0][3]/gupper[0][0]) ; }
 
 		int m = pi(PGID,p) - gids;
 		Real uE[3]; //Evolution of the velocity due to the electric field (first half).
@@ -85,35 +85,36 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 		// Determinant of metric needed for vector products
 		Real adm_det; 
 		ComputeDeterminant3( ADM_upper, adm_det );
-		// Determinant need is that of covariant metric
+		// Determinant needed is that of covariant metric
 		adm_det = 1.0/adm_det;
+		adm_det = sqrt(adm_det);
 
-		// Electric field is stored in coordinate frame, need to combine with B to operate on velocity in normal frame
-		// Vector product results in covariant vector
+		// Electric field is stored in coordinate frame, need to combine with B to operate on velocity
+		// Vector product of two controvariant vectors results in covariant vector
 		Real E_beta[3] = {
 			- gupper[0][2]/gupper[0][0]*B[2] + B[1]*gupper[0][3]/gupper[0][0],
 			- gupper[0][3]/gupper[0][0]*B[0] + B[2]*gupper[0][1]/gupper[0][0],
 			- gupper[0][1]/gupper[0][0]*B[1] + B[0]*gupper[0][2]/gupper[0][0]
 		};
 		for (int i = 0; i < 3; ++i ){ E_beta[i] *= adm_det; }
-		Real vec_ut[3] = {0.0};
-		//Raise indeces to contravariant
+		//Lower indeces of E to covariant for velocity push
 		for (int i1 = 0; i1 < 3; ++i1 ){ 
+      aux_vec[i1] = 0.0;
 			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			vec_ut[i1] += ADM_upper[i1][i2]*E_beta[i2];
+			aux_vec[i1] += glower[i1+1][i2+1]*E[i2];
 			}
 		}
-		for (int i = 0; i < 3; ++i ){ E[i] -= vec_ut[i]; }
+		for (int i = 0; i < 3; ++i ){ E[i] = aux_vec[i] - E_beta[i]; } //This is now alpha x D_i
 
-		// Push 4-velocity with electric field in normal frame
-		uE[0] = u_con[0] + dt*q_over_m/(2.0)*E[0];
-					if (multi_d) { uE[1] = u_con[1] + dt*q_over_m/(2.0)*E[1]; }
-					if (three_d) { uE[2] = u_con[2] + dt*q_over_m/(2.0)*E[2]; }
+		// Push 4-velocity with D_i field (first-half)
+		uE[0] = u_cov[0] + dt*q_over_m/(2.0)*E[0];
+    if (multi_d) { uE[1] = u_cov[1] + dt*q_over_m/(2.0)*E[1]; }
+    if (three_d) { uE[2] = u_cov[2] + dt*q_over_m/(2.0)*E[2]; }
 
-		//Intermediate Lorentz gamma factor in normal frame
-		g_Lor = glower[1][1]*SQR(uE[0]) + glower[2][2]*SQR(uE[1]) + glower[3][3]*SQR(uE[2])
-			+ 2.0*glower[1][2]*uE[0]*uE[1] + 2.0*glower[1][3]*uE[0]*uE[2] + 2.0*glower[2][3]*uE[1]*uE[2];
-		g_Lor = sqrt(1.0 + g_Lor);
+		//Intermediate Lorentz gamma factor
+		g_Lor = ADM_upper[0][0]*SQR(uE[0]) + ADM_upper[1][1]*SQR(uE[1]) + ADM_upper[2][2]*SQR(uE[2])
+			+ 2.0*ADM_upper[0][1]*uE[0]*uE[1] + 2.0*ADM_upper[0][2]*uE[0]*uE[2] + 2.0*ADM_upper[1][2]*uE[1]*uE[2];
+		g_Lor = sqrt(1.0 + g_Lor)*sqrt(-gupper[0][0]);
 
 		// Rotation of velocity due to magnetic field done in 2 steps
 		// i.e. Boris algorithm
@@ -126,70 +127,66 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 			}
 		}
 
+    Real uE_con[3] = {0.0}; //Raise indeces of uE for vector product
+		for (int i1 = 0; i1 < 3; ++i1 ){ 
+			for (int i2 = 0; i2 < 3; ++i2 ){ 
+			uE_con[i1] += ADM_upper[i1][i2]*uE[i2];
+			}
+		}
+
 		// Save the vector product of u and t 
 		// Vector product results in covariant vector
-		Real vec_ut_cov[3] = {
-		uE[1]*t[2] - uE[2]*t[1],
-		uE[2]*t[0] - uE[0]*t[2],
-		uE[0]*t[1] - uE[1]*t[0]
+		Real aux_vec_cov[3] = {
+		uE_con[1]*t[2] - uE_con[2]*t[1],
+		uE_con[2]*t[0] - uE_con[0]*t[2],
+		uE_con[0]*t[1] - uE_con[1]*t[0]
 		};
-		//Raise indeces to contravariant
+		//Raise indeces to contravariant for vector product
 		for (int i1 = 0; i1 < 3; ++i1 ){ 
-			vec_ut[i1] = 0.0;
+			aux_vec[i1] = 0.0;
 			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			vec_ut[i1] += ADM_upper[i1][i2]*vec_ut_cov[i2];
+			aux_vec[i1] += ADM_upper[i1][i2]*aux_vec_cov[i2];
 			}
 		}
 		// Used a vector product, correct for volume
-		for (int i = 0; i < 3; ++i ){ vec_ut[i] *= adm_det; }
+		for (int i = 0; i < 3; ++i ){ aux_vec[i] *= adm_det; }
 		// Re-use arrays
-		vec_ut_cov[0] = (uE[1] + vec_ut[1])*t[2] - (uE[2] + vec_ut[2])*t[1];
-		vec_ut_cov[1] = (uE[2] + vec_ut[2])*t[0] - (uE[0] + vec_ut[0])*t[2];
-		vec_ut_cov[2] = (uE[0] + vec_ut[0])*t[1] - (uE[1] + vec_ut[1])*t[0];
-		for (int i1 = 0; i1 < 3; ++i1 ){ 
-			vec_ut[i1] = 0.0;
-			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			vec_ut[i1] += ADM_upper[i1][i2]*vec_ut_cov[i2];
-			}
-		}
-		for (int i = 0; i < 3; ++i ){ vec_ut[i] *= adm_det; }
+		aux_vec_cov[0] = (uE_con[1] + aux_vec[1])*t[2] - (uE_con[2] + aux_vec[2])*t[1];
+		aux_vec_cov[1] = (uE_con[2] + aux_vec[2])*t[0] - (uE_con[0] + aux_vec[0])*t[2];
+		aux_vec_cov[2] = (uE_con[0] + aux_vec[0])*t[1] - (uE_con[1] + aux_vec[1])*t[0];
+		for (int i = 0; i < 3; ++i ){ aux_vec_cov[i] *= adm_det; }
 
-		// Finalize roation
-		uB[0] = uE[0] + 2.0/(1.0+mod_t_sqr)*( vec_ut[0] );
-		if (multi_d) { uB[1] = uE[1] + 2.0/(1.0+mod_t_sqr)*( vec_ut[1] ); }
-		if (three_d) { uB[2] = uE[2] + 2.0/(1.0+mod_t_sqr)*( vec_ut[2] ); }
+		// Finalize rotation
+		uB[0] = uE[0] + 2.0/(1.0+mod_t_sqr)*( aux_vec_cov[0] );
+		if (multi_d) { uB[1] = uE[1] + 2.0/(1.0+mod_t_sqr)*( aux_vec_cov[1] ); }
+		if (three_d) { uB[2] = uE[2] + 2.0/(1.0+mod_t_sqr)*( aux_vec_cov[2] ); }
 
 		//Second half-step with shifted electric field
 		uE[0] = uB[0] + dt*q_over_m/(2.0)*E[0];
 		if (multi_d) { uE[1] = uB[1] + dt*q_over_m/(2.0)*E[1]; }
 		if (three_d) { uE[2] = uB[2] + dt*q_over_m/(2.0)*E[2]; }
 
-		for (int i1 = 0; i1 < 3; ++i1 ){ 
-			u_cov[i1] = 0.0;
-			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			u_cov[i1] += glower[i1+1][i2+1]*uE[i2];
-			}
-		}
-		// Finally update velocity in normal frame
-		pr(IPVX,p) = u_cov[0];
-		pr(IPVY,p) = u_cov[1];
-		pr(IPVZ,p) = u_cov[2];
+		// Finally update velocity of particle
+		pr(IPVX,p) = uE[0];
+		pr(IPVY,p) = uE[1];
+		pr(IPVZ,p) = uE[2];
 
 		if (!only_v){
 		//Final Lorentz gamma factor
+    //Position is unchanged
 		g_Lor = ADM_upper[0][0]*SQR(uE[0]) + ADM_upper[1][1]*SQR(uE[1]) + ADM_upper[2][2]*SQR(uE[2])
 			+ 2.0*ADM_upper[0][1]*uE[0]*uE[1] + 2.0*ADM_upper[0][2]*uE[0]*uE[2] + 2.0*ADM_upper[1][2]*uE[1]*uE[2];
 		g_Lor = sqrt(1.0 + g_Lor)*sqrt(-gupper[0][0]);
-		// Raise indeces of u_cov to update position
+		// Raise indeces of uE to update position
 		for (int i1 = 0; i1 < 3; ++i1 ){ 
-			u_con[i1] = 0.0;
+			aux_vec[i1] = 0.0;
 			for (int i2 = 0; i2 < 3; ++i2 ){ 
-			u_con[i1] += ADM_upper[i1][i2]*u_cov[i2];
+			aux_vec[i1] += ADM_upper[i1][i2]*uE[i2];
 			}
 		}
-		pr(IPX,p) = x[0] + dt/(2.0)*(u_con[0]/g_Lor + gupper[0][1]/gupper[0][0]) ;
-					if (multi_d) { pr(IPY,p) = x[1] + dt/(2.0)*(u_con[1]/g_Lor + gupper[0][2]/gupper[0][0]) ; }
-					if (three_d) { pr(IPZ,p) = x[2] + dt/(2.0)*(u_con[2]/g_Lor + gupper[0][3]/gupper[0][0]) ; }
+		pr(IPX,p) = x[0] + dt/(2.0)*(aux_vec[0]/g_Lor + gupper[0][1]/gupper[0][0]) ;
+    if (multi_d) { pr(IPY,p) = x[1] + dt/(2.0)*(aux_vec[1]/g_Lor + gupper[0][2]/gupper[0][0]) ; }
+    if (three_d) { pr(IPZ,p) = x[2] + dt/(2.0)*(aux_vec[2]/g_Lor + gupper[0][3]/gupper[0][0]) ; }
 		}
 	});
 	return;
