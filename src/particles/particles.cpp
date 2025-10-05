@@ -62,12 +62,6 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   } else if (ppush.compare("boris") == 0) {
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
     pusher = ParticlesPusher::boris;
-  } else if (ppush.compare("only_gr") == 0) {
-    max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
-    iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
-    min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
-    charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
-    pusher = ParticlesPusher::only_gr;
   } else if (ppush.compare("full_gr") == 0) {
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
