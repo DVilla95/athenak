@@ -499,30 +499,112 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	Dz = (x3max - x3min)/indcs.nx3;
 	// Interpolate Electric Field at new particle location x1, x2, x3
 	E[0] = e0_.x1e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
+	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dx;
+	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dx;
 	E[0] /= 3.0;
-	E[1] = e0_.x2e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
+	E[1] = e0_.x2e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dy;
 	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
-	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
+	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
 	E[1] /= 3.0;
-	E[2] = e0_.x3e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
-	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
+	E[2] = e0_.x3e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dz;
+	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
 	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
 	E[2] /= 3.0;
 
 	// Interpolate Magnetic Field at new particle location x1, x2, x3
 	B[0] = b0_.x1f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
+	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dx;
+	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dx;
 	B[0] /= 3.0;
-	B[1] = b0_.x2f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
+	B[1] = b0_.x2f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dy;
 	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
-	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
+	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
 	B[1] /= 3.0;
-	B[2] = b0_.x3f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
-	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
+	B[2] = b0_.x3f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dz;
+	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
 	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
 	B[2] /= 3.0;
 
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn  void Lorentz_Terms
+//  \brief
+KOKKOS_INLINE_FUNCTION
+void Lorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const Real * B, 
+     const bool is_minkowski, const Real spin, const Real q_over_m,
+     Real * RHS ){
+	
+  // Co-variant 4-velocity in the coordinate frame
+  // To have compatibility with GR the velocity stored should be the covariant one
+  Real u_cov[3];
+  Real x[3]; // Position.
+  for (int i = 0; i<3; ++i) {
+    u_cov[i] = u_s[i];
+    x[i] = x_s[i];
+  }
+  Real g_Lor;
+  // Get metric components at starting location x1,x2,x3
+  Real glower[4][4], gupper[4][4], ADM_upper[3][3]; // Metric 
+                 // (remember: sqrt(-1/gupper[0][0]) = alpha)
+  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
+  // Compute 3x3 ADM spatial metric from metric 
+  GetUpperAdmMetric( gupper, ADM_upper );
+  // Determinant of metric needed for vector products
+  Real adm_det; 
+  ComputeDeterminant3( ADM_upper, adm_det );
+  // Determinant needed is that of covariant metric
+  adm_det = 1.0/adm_det;
+  adm_det = sqrt(adm_det);
+
+  // Electric field is stored in coordinate frame, need to combine with B to operate on velocity
+  // Vector product of two controvariant vectors results in covariant vector
+  Real E_beta[3] = {
+    - gupper[0][2]/gupper[0][0]*B[2] + B[1]*gupper[0][3]/gupper[0][0],
+    - gupper[0][3]/gupper[0][0]*B[0] + B[2]*gupper[0][1]/gupper[0][0],
+    - gupper[0][1]/gupper[0][0]*B[1] + B[0]*gupper[0][2]/gupper[0][0]
+  };
+  for (int i = 0; i < 3; ++i ){ E_beta[i] *= adm_det; }
+  //Lower indeces of E to covariant for velocity push
+  Real aux_vec[3] = {0.0};
+  for (int i1 = 0; i1 < 3; ++i1 ){ 
+    for (int i2 = 0; i2 < 3; ++i2 ){ 
+    aux_vec[i1] += glower[i1+1][i2+1]*E[i2];
+    }
+  }
+  for (int i = 0; i < 3; ++i ){ aux_vec[i] -= E_beta[i]; } //This is now alpha x D_i
+
+  //Lorentz factor in Normal frame
+  g_Lor = ADM_upper[0][0]*SQR(u_cov[0]) + ADM_upper[1][1]*SQR(u_cov[1]) + ADM_upper[2][2]*SQR(u_cov[2])
+    + 2.0*ADM_upper[0][1]*u_cov[0]*u_cov[1] + 2.0*ADM_upper[0][2]*u_cov[0]*u_cov[2] + 2.0*ADM_upper[1][2]*u_cov[1]*u_cov[2];
+  // In principle the 1.0 should be replaced by a 0 if
+  // the particle is massless, but I don't know of 
+  // any massless particle that can interact with an 
+  // electromagnetic field (unless one goes into quantum mechanics)
+  // Convert to Lorentz factor in coordinate frame i.e u^0
+  g_Lor = sqrt(1.0 + g_Lor)*sqrt(-gupper[0][0]);
+
+  Real u_con[3] = {0.0};
+  //Raise indeces to contravariant for position push
+  for (int i1 = 0; i1 < 3; ++i1 ){ 
+    for (int i2 = 0; i2 < 3; ++i2 ){ 
+    u_con[i1] += ADM_upper[i1][i2]*u_cov[i2];
+    }
+    u_con[i1] /= g_Lor;
+  }
+
+  // Vector product results in covariant vector
+  Real aux_vec2[3] = {
+    u_con[1]*B[2] - u_con[2]*B[1],
+    u_con[2]*B[0] - u_con[0]*B[2],
+    u_con[0]*B[1] - u_con[1]*B[0]
+  };
+  // Used a vector product, correct for volume
+  for (int i = 0; i < 3; ++i ){ aux_vec2[i] *= adm_det; }
+
+  RHS[0] += q_over_m*(aux_vec[0] + aux_vec2[0]);
+  RHS[1] += q_over_m*(aux_vec[1] + aux_vec2[1]);
+  RHS[2] += q_over_m*(aux_vec[2] + aux_vec2[2]);
+
+	return;
 }

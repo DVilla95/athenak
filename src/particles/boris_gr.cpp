@@ -114,7 +114,7 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 		//Intermediate Lorentz gamma factor
 		g_Lor = ADM_upper[0][0]*SQR(uE[0]) + ADM_upper[1][1]*SQR(uE[1]) + ADM_upper[2][2]*SQR(uE[2])
 			+ 2.0*ADM_upper[0][1]*uE[0]*uE[1] + 2.0*ADM_upper[0][2]*uE[0]*uE[2] + 2.0*ADM_upper[1][2]*uE[1]*uE[2];
-		g_Lor = sqrt(1.0 + g_Lor); // To do the rotation the Lorentz factor in the normal frame is the one needed
+		g_Lor = sqrt(1.0 + g_Lor)*sqrt(-gupper[0][0]); // To do the rotation the Lorentz factor in the normal frame is the one needed
 
 		// Rotation of velocity due to magnetic field done in 2 steps
 		// i.e. Boris algorithm
@@ -198,13 +198,24 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 //Provide dt as input parameter in order to be able to use this function
 //also for half-steps
 //Largely implemented following Bacchini et al. 2020 (https://doi.org/10.3847/1538-4365/abb604)
-void Particles::GeodesicIterations( const Real dt ){
+void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 	auto &pr = prtcl_rdata;
+	auto &pi = prtcl_idata;
 	const Real it_tol = iter_tolerance;
 	const Real spin = pmy_pack->pcoord->coord_data.bh_spin;
 	const int it_max = max_iter;
 	const bool &multi_d = pmy_pack->pmesh->multi_d;
 	const bool &three_d = pmy_pack->pmesh->three_d;
+  auto gids = pmy_pack->gids;
+	const Real &q_over_m = charge_over_mass;
+  if (q_over_m == 0.0)
+    skip_em = true;
+	auto &b0_ = pmy_pack->pmhd->b0;
+	auto &e0_ = pmy_pack->pmhd->efld;
+	const bool is_minkowski = pmy_pack->pcoord->coord_data.is_minkowski;
+	auto &indcs = pmy_pack->pmesh->mb_indcs;
+	auto &mbsize = pmy_pack->pmb->mb_size;
+
 	const Real x_step = 1.0E-07;
 	const Real v_step = 1.0E-07;
 	Real avg_iter = 0.0;
@@ -229,6 +240,7 @@ void Particles::GeodesicIterations( const Real dt ){
 		Real RHS_grad_1[3], RHS_grad_2[3];
 		int n_iter = 0;
 		Real step_fac = 1.0;
+    int m = pi(PGID,p) - gids;
 
 		// Start iterating
 		// Using Newton method, thus computing the Jacobian at each iteration
@@ -239,6 +251,12 @@ void Particles::GeodesicIterations( const Real dt ){
 
 		HamiltonEquation_Position(x_init, x_eval, v_init, v_eval, spin, RHS_eval_x);
 		HamiltonEquation_Velocity(x_init, x_eval, v_init, v_eval, x_step, spin, it_tol, RHS_eval_v);
+
+    Real E[3], B[3];
+    if (skip_em){
+      InterpolateFields( x_eval, b0_, e0_, mbsize, indcs, m, E, B );
+      Lorentz_Terms(x_eval, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+    }
 
 		// First Jacobian for position
 		// Variation along x
@@ -274,6 +292,10 @@ void Particles::GeodesicIterations( const Real dt ){
 			for (int j=0; j<3; ++j){ x_eval[i] -= inv_Jacob[j][i]*(x_grad[j] - x_init[j] - RHS_eval_x[j]*dt); }
 		}
 
+    if (skip_em){
+      InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
+    }
+
 		// Then Jacobian for velocity
 		// Variation along x
 		// Not that the velocity here is covariant, thus derivatives along 
@@ -282,24 +304,42 @@ void Particles::GeodesicIterations( const Real dt ){
 		v_grad[0] = v_eval[0] + v_step/step_fac;
 		v_grad[1] = v_eval[1]; v_grad[2] = v_eval[2];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
+    }
 		v_grad[0] = v_eval[0] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
+    }
 		for (int i=0; i<3; ++i) { Jacob[i][0] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
 		Jacob[0][0] += 1.0; // Diagonal terms
 		// Variation along y
 		v_grad[1] = v_eval[1] + v_step/step_fac;
 		v_grad[0] = v_eval[0]; v_grad[2] = v_eval[2];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
+    }
 		v_grad[1] = v_eval[1] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
+    }
 		for (int i=0; i<3; ++i) { Jacob[i][1] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
 		Jacob[1][1] += 1.0; // Diagonal terms
 		// Variation along z
 		v_grad[2] = v_eval[2] + v_step/step_fac;
 		v_grad[0] = v_eval[0]; v_grad[1] = v_eval[1];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
+    }
 		v_grad[2] = v_eval[2] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
+    if (skip_em){
+      Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
+    }
 		for (int i=0; i<3; ++i) { Jacob[i][2] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
 		Jacob[2][2] += 1.0; // Diagonal terms
 		ComputeInverseMatrix3( Jacob, inv_Jacob );
