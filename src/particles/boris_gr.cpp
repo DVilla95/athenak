@@ -198,7 +198,7 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 //Provide dt as input parameter in order to be able to use this function
 //also for half-steps
 //Largely implemented following Bacchini et al. 2020 (https://doi.org/10.3847/1538-4365/abb604)
-void Particles::GeodesicIterations( const Real dt, bool skip_em ){
+void Particles::GeodesicIterations( const Real dt ){
 	auto &pr = prtcl_rdata;
 	auto &pi = prtcl_idata;
 	const Real it_tol = iter_tolerance;
@@ -208,6 +208,7 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 	const bool &three_d = pmy_pack->pmesh->three_d;
   auto gids = pmy_pack->gids;
 	const Real &q_over_m = charge_over_mass;
+  bool skip_em = false;
   if (q_over_m == 0.0)
     skip_em = true;
 	auto &b0_ = pmy_pack->pmhd->b0;
@@ -253,7 +254,7 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 		HamiltonEquation_Velocity(x_init, x_eval, v_init, v_eval, x_step, spin, it_tol, RHS_eval_v);
 
     Real E[3], B[3];
-    if (skip_em){
+    if (!skip_em){
       InterpolateFields( x_eval, b0_, e0_, mbsize, indcs, m, E, B );
       Lorentz_Terms(x_eval, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
     }
@@ -292,7 +293,7 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 			for (int j=0; j<3; ++j){ x_eval[i] -= inv_Jacob[j][i]*(x_grad[j] - x_init[j] - RHS_eval_x[j]*dt); }
 		}
 
-    if (skip_em){
+    if (!skip_em){
       InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
     }
 
@@ -304,12 +305,12 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 		v_grad[0] = v_eval[0] + v_step/step_fac;
 		v_grad[1] = v_eval[1]; v_grad[2] = v_eval[2];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
     }
 		v_grad[0] = v_eval[0] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
     }
 		for (int i=0; i<3; ++i) { Jacob[i][0] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
@@ -318,12 +319,12 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 		v_grad[1] = v_eval[1] + v_step/step_fac;
 		v_grad[0] = v_eval[0]; v_grad[2] = v_eval[2];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
     }
 		v_grad[1] = v_eval[1] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
     }
 		for (int i=0; i<3; ++i) { Jacob[i][1] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
@@ -332,12 +333,12 @@ void Particles::GeodesicIterations( const Real dt, bool skip_em ){
 		v_grad[2] = v_eval[2] + v_step/step_fac;
 		v_grad[0] = v_eval[0]; v_grad[1] = v_eval[1];
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_1);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_1);
     }
 		v_grad[2] = v_eval[2] - v_step/step_fac;
 		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step/step_fac, spin, it_tol, RHS_grad_2);
-    if (skip_em){
+    if (!skip_em){
       Lorentz_Terms(x_grad, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_2);
     }
 		for (int i=0; i<3; ++i) { Jacob[i][2] = - (RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step/step_fac); }
