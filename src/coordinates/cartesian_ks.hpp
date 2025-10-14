@@ -272,9 +272,8 @@ void ComputeADMDecomposition(Real x, Real y, Real z, bool minkowski, Real a,
 //! \fn void ComputeMetricDerivatives
 //! \brief computes derivates of metric in Cartesian Kerr-Schild coordinates, which are
 //!  used to compute the coordinate source terms in the equations of motion.
-
 KOKKOS_INLINE_FUNCTION
-void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
+void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a, bool upper,
                               Real dg_dx1[][4], Real dg_dx2[][4], Real dg_dx3[][4]) {
   // NOTE(@pdmullen): See comment in ComputeMetricAndInverse
   // if (fabs(z) < (SMALL_NUMBER)) z = (SMALL_NUMBER);
@@ -286,8 +285,9 @@ void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
   }
   //r = fmax(r, 1.0);  // floor r_ks to 0.5*(r_inner + r_outer)
 
+  Real ul = (upper) ? -1.0 : 1.0;
   Real llower[4];
-  llower[0] = 1.0;
+  llower[0] = ul;
   llower[1] = (r*x + a * y)/( SQR(r) + SQR(a) );
   llower[2] = (r*y - a * x)/( SQR(r) + SQR(a) );
   llower[3] = z/r;
@@ -296,10 +296,11 @@ void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
   Real qb = SQR(r) + SQR(a);
   Real qc = 3.0*SQR(a * z)-SQR(r)*SQR(r);
   Real f = 2.0 * SQR(r)*r / (SQR(SQR(r)) + SQR(a)*SQR(z));
+  f *= ul;
 
-  Real df_dx1 = SQR(f)*x/(2.0*pow(r,3)) * ( ( qc ) )/ qa;
-  Real df_dx2 = SQR(f)*y/(2.0*pow(r,3)) * ( ( qc ) )/ qa;
-  Real df_dx3 = SQR(f)*z/(2.0*pow(r,5)) * ( ( qc * qb ) / qa - 2.0*SQR(a*r));
+  Real df_dx1 = ul*( SQR(f)*x/(2.0*pow(r,3)) * ( ( qc ) )/ qa );
+  Real df_dx2 = ul*( SQR(f)*y/(2.0*pow(r,3)) * ( ( qc ) )/ qa );
+  Real df_dx3 = ul*( SQR(f)*z/(2.0*pow(r,5)) * ( ( qc * qb ) / qa - 2.0*SQR(a*r)) );
   Real dl1_dx1 = x*r * ( SQR(a)*x - 2.0*a*r*y - SQR(r)*x )/( SQR(qb) * qa ) + r/( qb );
   Real dl1_dx2 = y*r * ( SQR(a)*x - 2.0*a*r*y - SQR(r)*x )/( SQR(qb) * qa ) + a/( qb );
   Real dl1_dx3 = z/r * ( SQR(a)*x - 2.0*a*r*y - SQR(r)*x )/( (qb) * qa );
@@ -376,6 +377,13 @@ void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
   dg_dx3[3][3] = df_dx3*llower[3]*llower[3] + f*dl3_dx3*llower[3] + f*llower[3]*dl3_dx3;
 
   return;
+}
+
+KOKKOS_INLINE_FUNCTION
+void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
+                              Real dg_dx1[][4], Real dg_dx2[][4], Real dg_dx3[][4]) {
+  bool get_upper = false;
+  ComputeMetricDerivatives(x, y, z, minkowski, a, get_upper, dg_dx1, dg_dx2, dg_dx3);
 }
 
 
