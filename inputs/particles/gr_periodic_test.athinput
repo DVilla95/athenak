@@ -34,9 +34,9 @@ nx3       = 32       # Number of cells in each MeshBlock, X3-dir
 <time>
 evolution  = dynamic   # dynamic/kinematic/static
 integrator = rk2       # time integration algorithm
-cfl_number = 0.5     # The Courant, Friedrichs, & Lewy (CFL) Number
+cfl_number = 0.1     # The Courant, Friedrichs, & Lewy (CFL) Number
 nlim       = -1        # cycle limit
-tlim       = 5000.0      # time limit
+tlim       = 50000.0      # time limit
 ndiag      = 50        # cycles between diagostic output
 
 <coord>
@@ -48,14 +48,14 @@ pexcise = 1.0E-10
 
 <particles>
 ppc    = 0.0001
-pusher = only_gr
-iter_tolerance = 1.0E-10
-max_iter = 10
+pusher = imr
+iter_tolerance = 1.0E-14
+max_iter = 25
 particle_type = cosmic_ray
 charge_over_mass = 1.0
 
 <problem>
-equatorial = false
+equatorial = true
 angular_momentum = 3.8
 user_hist = true
 max_init_vel = 0.2
