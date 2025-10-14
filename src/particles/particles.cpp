@@ -59,15 +59,21 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   std::string ppush = pin->GetString("particles","pusher");
   if (ppush.compare("drift") == 0) {
     pusher = ParticlesPusher::drift;
-  } else if (ppush.compare("boris") == 0) {
+  } else if (ppush.compare("boris_gr") == 0) {
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
-    pusher = ParticlesPusher::boris;
-  } else if (ppush.compare("full_gr") == 0) {
+    pusher = ParticlesPusher::boris_gr;
+  } else if (ppush.compare("ham_geo") == 0) {
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
     min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
-    pusher = ParticlesPusher::full_gr;
+    pusher = ParticlesPusher::ham_geo;
+  } else if (ppush.compare("imr") == 0) {
+    max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
+    iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
+    min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
+    charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
+    pusher = ParticlesPusher::imr;
   } else if (ppush.compare("gca_gr") == 0) {
 		is_gca = true;
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);

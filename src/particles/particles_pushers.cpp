@@ -51,13 +51,18 @@ TaskStatus Particles::Push(Driver *pdriver, int stage) {
 
     break;
     
-    case ParticlesPusher::boris:
-      const bool only_v = false;
-      BorisStep(dt_, only_v);
+    case ParticlesPusher::boris_gr:
+      BorisStep(dt_/2.0, true);
+      GeodesicIterations(dt_);
+      BorisStep(dt_/2.0, true);
     break;
 
-    case ParticlesPusher::full_gr:
+    case ParticlesPusher::ham_geo:
       GeodesicIterations(dt_);
+    break;
+
+    case ParticlesPusher::imr:
+      GRLorentzIterations(dt_);
     break;
 
     case ParticlesPusher::gca_gr:
