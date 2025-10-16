@@ -101,8 +101,9 @@ add_executable(
         outputs/vtk_prtcl.cpp
 
         particles/hamiltonian_gr.hpp
+        particles/particles_helpers.hpp
         particles/gca_gr.cpp
-        particles/boris_gr.cpp
+        particles/gr_pushers.cpp
         particles/particles.cpp
         particles/particles_pushers.cpp
         particles/particles_tasks.cpp

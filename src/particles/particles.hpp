@@ -92,8 +92,8 @@ class Particles {
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
 
-  void BorisStep( const Real dt, const bool only_v );
-  void GeodesicIterations( const Real dt );
+  void BorisStepGR( const Real dt, const bool only_v );
+  void HamiltonianGeodesicsIterations( const Real dt );
   void GRLorentzIterations( const Real dt );
   void GCAIterations( const Real dt );
 

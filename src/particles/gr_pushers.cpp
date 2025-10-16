@@ -11,17 +11,18 @@
 #include "driver/driver.hpp"
 #include "particles.hpp"
 #include "hamiltonian_gr.hpp"
+#include "particles_helpers.hpp"
 #include "coordinates/cell_locations.hpp"
 #include "coordinates/cartesian_ks.hpp"
 
 namespace particles {
 //----------------------------------------------------------------------------------------
-//! \fn  void Particles::BorisStep
+//! \fn  void Particles::BorisStepGR
 //  \brief
 //Provide dt and only_v as input parameter in order to be able to use this function
 //also for half-steps in the full_gr pusher
 //Largely implemented following Ripperda et al. 2018 (https://doi.org/10.3847/1538-4365/aab114)
-void Particles::BorisStep( const Real dt, const bool only_v ){
+void Particles::BorisStepGR( const Real dt, const bool only_v ){
 	
 	auto &npart = nprtcl_thispack;
 	auto &pi = prtcl_idata;
@@ -188,12 +189,12 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  void Particles::GeodesicIterations
-//  \brief
-//Provide dt as input parameter in order to be able to use this function
-//also for half-steps
-//Largely implemented following Bacchini et al. 2020 (https://doi.org/10.3847/1538-4365/abb604)
-void Particles::GeodesicIterations( const Real dt ){
+//! \fn  void Particles::HamiltonianGeodesicsIterations
+//! \brief
+//! Largely implemented following Bacchini et al. 2020 (https://doi.org/10.3847/1538-4365/abb604)
+//! Computes the geodesic terms in the particle push using a conservative hamiltonian scheme
+//! Robust and accurate but expensive
+void Particles::HamiltonianGeodesicsIterations( const Real dt ){
 	auto &pr = prtcl_rdata;
 	auto &pi = prtcl_idata;
 	const Real it_tol = iter_tolerance;
@@ -209,7 +210,7 @@ void Particles::GeodesicIterations( const Real dt ){
 	const Real v_step = 1.0E-08;
 	Real avg_iter = 0.0;
 
-	Kokkos::parallel_reduce("part_fullgr",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+	Kokkos::parallel_reduce("part_ham_geo",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
 		KOKKOS_LAMBDA(const int p, Real &aux_n_iter) {
 	//par_for("part_fullgr",DevExeSpace(),0,(nprtcl_thispack-1),
 	//KOKKOS_LAMBDA(const int p) {
@@ -357,6 +358,13 @@ void Particles::GeodesicIterations( const Real dt ){
 	return;
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn  void Particles::GRLorentzIterations
+//! \brief
+//! Largely implemented following Bacchini et al. 2019
+//! Computes the geodesic terms couple to the electromagnetic terms in the particle push
+//! using implicit mid-point rule iterations
+//! Fast but not the most precise solution
 void Particles::GRLorentzIterations( const Real dt ){
 	auto &pr = prtcl_rdata;
 	auto &pi = prtcl_idata;
@@ -572,7 +580,6 @@ void Particles::GRLorentzIterations( const Real dt ){
       resnorm += SQR(res[i]);
 
 		};
-    /***/
 
 		// Done with iterations, update ``true'' values
     pr(IPVX,p) = v_eval[0];

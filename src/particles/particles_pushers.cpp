@@ -52,13 +52,13 @@ TaskStatus Particles::Push(Driver *pdriver, int stage) {
     break;
     
     case ParticlesPusher::boris_gr:
-      BorisStep(dt_/2.0, true);
-      GeodesicIterations(dt_);
-      BorisStep(dt_/2.0, true);
+      BorisStepGR(dt_/2.0, true);
+      HamiltonianGeodesicsIterations(dt_);
+      BorisStepGR(dt_/2.0, true);
     break;
 
     case ParticlesPusher::ham_geo:
-      GeodesicIterations(dt_);
+      HamiltonianGeodesicsIterations(dt_);
     break;
 
     case ParticlesPusher::imr:
