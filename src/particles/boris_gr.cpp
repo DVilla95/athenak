@@ -391,9 +391,9 @@ void Particles::GRLorentzIterations( const Real dt ){
 		Real v_eval[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
     Real x_mid[3], v_mid[3];
 		Real RHS_eval_v[3], RHS_eval_x[3]; 
-		Real Jacob[ndim][ndim];
+		Real Jacob[6][6];
 		Real RHS_grad_x1[3], RHS_grad_x2[3], RHS_grad_v1[3], RHS_grad_v2[3];
-		Real res[ndim];
+		Real res[6];
 		int n_iter = 0;
     int m = pi(PGID,p) - gids;
     Real E[3], B[3];
@@ -543,8 +543,8 @@ void Particles::GRLorentzIterations( const Real dt ){
                         //
     
     // This not ideal: Size of matrix is fixed
-    Real Jacob1D[ndim*ndim];
-    Real invJacob1D[ndim*ndim];
+    Real Jacob1D[6*6];
+    Real invJacob1D[6*6];
     for (int ii = 0; ii<ndim; ++ii){
       for (int ij = 0; ij<ndim; ++ij){
         Jacob1D[ii*ndim + ij] = Jacob[ii][ij];
