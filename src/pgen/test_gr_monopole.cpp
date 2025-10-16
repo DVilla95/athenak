@@ -883,16 +883,16 @@ void EnergyConservationTest(HistoryData *pdata, Mesh *pm){
       Real a2 = gl[2][0]*uc0 + gl[2][1]*uc1 + gl[2][2]*uc2 + gl[2][3]*uc3;
       Real a3 = gl[3][0]*uc0 + gl[3][1]*uc1 + gl[3][2]*uc2 + gl[3][3]*uc3;
 
-      Real u0 = 1.0 + adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
+      Real u0 = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
         + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
-      u0 = sqrt(u0)*sqrt(-gu[0][0])*sqrt(-gu[0][0]);
+      u0 = sqrt(1.0 + u0)*sqrt(-gu[0][0]);
       Real u1, u2, u3;
       u1 = adm[0][0]*u[0] + adm[0][1]*u[1] + adm[0][2]*u[2];
       u1 = u1 + u0*gu[0][1]/gu[0][0]; //Subtract beta^i
       u2 = adm[1][0]*u[0] + adm[1][1]*u[1] + adm[1][2]*u[2];
       u2 = u2 + u0*gu[0][2]/gu[0][0]; //Subtract beta^i
       u3 = adm[2][0]*u[0] + adm[2][1]*u[1] + adm[2][2]*u[2];
-      u3 = u3 + u0*gu[0][2]/gu[0][0]; //Subtract beta^i
+      u3 = u3 + u0*gu[0][3]/gu[0][0]; //Subtract beta^i
       Real u_0 = gl[0][0]*u0 + gl[0][1]*u1 + gl[0][2]*u2 + gl[0][3]*u3;
       Real E = - u_0 - q_over_m*a0;
       pdata->hdata[p] = E;

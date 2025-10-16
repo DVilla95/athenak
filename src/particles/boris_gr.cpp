@@ -136,7 +136,6 @@ void Particles::BorisStep( const Real dt, const bool only_v ){
 		}
 
 		// Save the vector product of u and t 
-		// Vector product results in covariant vector
 		aux_vec[0] = uE_con[1]*t[2] - uE_con[2]*t[1];
 		aux_vec[1] = uE_con[2]*t[0] - uE_con[0]*t[2];
 		aux_vec[2] = uE_con[0]*t[1] - uE_con[1]*t[0];
@@ -294,7 +293,7 @@ void Particles::GeodesicIterations( const Real dt ){
     }
 
 		for (int i=0; i<3; ++i){
-			for (int j=0; j<3; ++j){ x_eval[i] -= inv_Jacob[j][i]*res_x[j]; }
+			for (int j=0; j<3; ++j){ x_eval[i] -= inv_Jacob[i][j]*res_x[j]; }
 		}
 
 		// Then Jacobian for velocity
@@ -336,7 +335,7 @@ void Particles::GeodesicIterations( const Real dt ){
       resnorm += SQR(res_v[i]);
 
 		for (int i=0; i<3; ++i){
-			for (int j=0; j<3; ++j){ v_eval[i] -= inv_Jacob[j][i]*res_v[j]; }
+			for (int j=0; j<3; ++j){ v_eval[i] -= inv_Jacob[i][j]*res_v[j]; }
 		}
 
 		}while(
@@ -374,8 +373,8 @@ void Particles::GRLorentzIterations( const Real dt ){
 	auto &indcs = pmy_pack->pmesh->mb_indcs;
 	auto &mbsize = pmy_pack->pmb->mb_size;
 
-	const Real x_step = 1.0E-10;
-	const Real v_step = 1.0E-10;
+	const Real x_step = 1.0E-12;
+	const Real v_step = 1.0E-12;
 	Real avg_iter = 0.0;
   int ndim = 6;
 
@@ -571,7 +570,6 @@ void Particles::GRLorentzIterations( const Real dt ){
     resnorm = 0.0;
     for (int i = 0; i<ndim; ++i) 
       resnorm += SQR(res[i]);
-    std::cout << "res " << resnorm << std::endl;
 
 		};
     /***/
