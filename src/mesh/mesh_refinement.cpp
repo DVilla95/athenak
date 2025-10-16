@@ -56,7 +56,7 @@ MeshRefinement::MeshRefinement(Mesh *pm, ParameterInput *pin) :
   if (pin->DoesBlockExist("mesh_refinement")) {
     // read interval (in cycles) between check of AMR and derefinement
     ncyc_check_amr = pin->GetOrAddReal("mesh_refinement", "ncycle_check", 1);
-    refinement_interval = pin->GetOrAddReal("mesh_refinement", "refinement_interval", 5);
+    refinement_interval = pin->GetOrAddInteger("mesh_refinement", "refinement_interval", 5);
     // read prolongate primitives flag
     if (pin->DoesParameterExist("mesh_refinement", "prolong_primitives")) {
       prolong_prims = pin->GetBoolean("mesh_refinement", "prolong_primitives");

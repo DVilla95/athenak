@@ -1,3 +1,5 @@
+#ifndef PARTICLES_HAMILTONIAN_GR_HPP_
+#define PARTICLES_HAMILTONIAN_GR_HPP_
 //========================================================================================
 // AthenaXXX astrophysical plasma code
 // Copyright(C) 2020 James M. Stone <jmstone@ias.edu> and the Athena code team
@@ -13,18 +15,7 @@
 #include "particles.hpp"
 #include "coordinates/cell_locations.hpp"
 #include "coordinates/cartesian_ks.hpp"
-
-//----------------------------------------------------------------------------------------
-//! \fn  void GetUpperAdmMetric
-//  \brief
-KOKKOS_INLINE_FUNCTION
-void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
-	for (int i1 = 0; i1 < 3; ++i1 ){ 
-		for (int i2 = 0; i2 < 3; ++i2 ){ 
-		outputMat[i1][i2] = inputMat[i1+1][i2+1] - inputMat[0][i2+1]*inputMat[i1+1][0]/inputMat[0][0];
-		}
-	}
-}
+#include "particles_helpers.hpp"
 
 //----------------------------------------------------------------------------------------
 //! \fn  void SingleTermHelper_Position
@@ -438,93 +429,167 @@ void HamiltonEquation_Velocity(const Real * x_0, const Real * x_1, const Real * 
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  void ComputeDeterminant3
-//  \brief Compute the determinant of a 3x3 matrix
+//! \fn  void Lorentz_Terms
+//  \brief
 KOKKOS_INLINE_FUNCTION
-void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
+void GRLorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const Real * B, 
+     const bool is_minkowski, const Real spin, const Real q_over_m,
+     Real * RHS ){
+	
+  // Co-variant 4-velocity in the coordinate frame
+  // To have compatibility with GR the velocity stored should be the covariant one
+  Real u_cov[3];
+  Real x[3]; // Position.
+  for (int i = 0; i<3; ++i) {
+    u_cov[i] = u_s[i];
+    x[i] = x_s[i];
+  }
+  // Get metric components at starting location x1,x2,x3
+  Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
+                 // (remember: sqrt(-1/gupper[0][0]) = alpha)
+  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
+  // Compute 3x3 ADM spatial metric from metric 
+  GetUpperAdmMetric( gupper, adm );
+  // Determinant of metric needed for vector products
+  Real adm_det; 
+  ComputeDeterminant3( adm, adm_det );
+  // Determinant needed is that of covariant metric
+  adm_det = 1.0/adm_det;
+  adm_det = sqrt(adm_det);
 
-	determinant = inputMat[0][0]*inputMat[1][1]*inputMat[2][2] + inputMat[0][1]*inputMat[1][2]*inputMat[2][0]
-		+ inputMat[1][0]*inputMat[2][1]*inputMat[0][2]
-		- inputMat[2][0]*inputMat[1][1]*inputMat[0][2] - inputMat[1][0]*inputMat[0][1]*inputMat[2][2]
-		- inputMat[2][1]*inputMat[1][2]*inputMat[1][1];
+  // Electric field is stored in fluid frame, need to combine with B to operate on velocity
+  Real a_vec[3] = {
+    - gupper[0][2]/gupper[0][0]*B[2] + B[1]*gupper[0][3]/gupper[0][0],
+    - gupper[0][3]/gupper[0][0]*B[0] + B[2]*gupper[0][1]/gupper[0][0],
+    - gupper[0][1]/gupper[0][0]*B[1] + B[0]*gupper[0][2]/gupper[0][0]
+  };
+  for (int i = 0; i < 3; ++i ){ a_vec[i] *= adm_det; }
+  Real u_con[3] = {0.0};
+  for (int i1 = 0; i1 < 3; ++i1 ){ 
+    for (int i2 = 0; i2 < 3; ++i2 ){ 
+    u_con[i1] += adm[i1][i2]*a_vec[i2];
+    }
+  }
+  //Lower indeces of E to covariant for velocity push
+  a_vec[0] = E[0] - u_con[0];
+  a_vec[1] = E[1] - u_con[1];
+  a_vec[2] = E[2] - u_con[2];
+  Real push[3];
+  push[0] = glower[1][1]*a_vec[0] + glower[1][2]*a_vec[1] + glower[1][3]*a_vec[2];
+  push[1] = glower[2][1]*a_vec[0] + glower[2][2]*a_vec[1] + glower[2][3]*a_vec[2];
+  push[2] = glower[3][1]*a_vec[0] + glower[3][2]*a_vec[1] + glower[3][3]*a_vec[2];
 
+  Real u0;
+  //Lorentz factor in Normal frame
+  u0 = adm[0][0]*SQR(u_cov[0]) + adm[1][1]*SQR(u_cov[1]) + adm[2][2]*SQR(u_cov[2])
+    + 2.0*adm[0][1]*u_cov[0]*u_cov[1] + 2.0*adm[0][2]*u_cov[0]*u_cov[2] + 2.0*adm[1][2]*u_cov[1]*u_cov[2];
+  // In principle the 1.0 should be replaced by a 0 if
+  // the particle is massless, but I don't know of 
+  // any massless particle that can interact with an 
+  // electromagnetic field (unless one goes into quantum mechanics)
+  // Convert to Lorentz factor in coordinate frame i.e u^0
+  u0 = sqrt(1.0 + u0)*sqrt(-gupper[0][0]);
+
+  //Lower indeces to covariant
+  for (int i1 = 0; i1 < 3; ++i1 ){ 
+    u_con[i1] = 0.0;
+    for (int i2 = 0; i2 < 3; ++i2 ){ 
+    u_con[i1] += adm[i1][i2]*u_cov[i2];
+    }
+    u_con[i1] /= u0;
+  }
+
+  Real push2[3] = {
+    u_con[1]*B[2] - u_con[2]*B[1],
+    u_con[2]*B[0] - u_con[0]*B[2],
+    u_con[0]*B[1] - u_con[1]*B[0]
+  };
+  // Used a vector product, correct for volume
+  for (int i = 0; i < 3; ++i ){ push2[i] *= adm_det; }
+
+  RHS[0] += q_over_m*(push[0] + push2[0]);
+  RHS[1] += q_over_m*(push[1] + push2[1]);
+  RHS[2] += q_over_m*(push[2] + push2[2]);
+
+	return;
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  void ComputeInverseMatrix3
-//  \brief Compute the inverse of a 3x3 matrix
+//! \fn  void PushPosition
+//  \brief Basic position push RHS
 KOKKOS_INLINE_FUNCTION
-void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
+void GRRHSPosition( const Real * x, const Real * u, const bool is_minkowski, const Real spin, Real * RHS ){
+	
+  Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
+  Real gamma;
+  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
+  GetUpperAdmMetric( gupper, adm );
+  gamma = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
+    + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
+  gamma = sqrt(1.0 + gamma)*sqrt(-gupper[0][0]);
+  RHS[0] = adm[0][0]*u[0] + adm[0][1]*u[1] + adm[0][2]*u[2];
+  RHS[1] = adm[1][0]*u[0] + adm[1][1]*u[1] + adm[1][2]*u[2];
+  RHS[2] = adm[2][0]*u[0] + adm[2][1]*u[1] + adm[2][2]*u[2];
+  RHS[0] /= gamma;
+  RHS[1] /= gamma;
+  RHS[2] /= gamma;
+  RHS[0] += gupper[0][1]/gupper[0][0];
+  RHS[1] += gupper[0][2]/gupper[0][0];
+  RHS[2] += gupper[0][3]/gupper[0][0];
 
-	Real determinant = 0.0;
-	ComputeDeterminant3( inputMat, determinant );
-
-	// Transposition of Jacobian is skipped and indeces are inverted instead
-	outputMat[0][0] = (inputMat[1][1]*inputMat[2][2] - inputMat[2][1]*inputMat[1][2])/determinant;
-	outputMat[1][0] = -(inputMat[1][0]*inputMat[2][2] - inputMat[0][2]*inputMat[2][1])/determinant;
-	outputMat[2][0] = (inputMat[1][1]*inputMat[1][2] - inputMat[0][2]*inputMat[1][1])/determinant;
-	outputMat[0][1] = -(inputMat[1][0]*inputMat[2][2] - inputMat[1][2]*inputMat[2][0])/determinant;
-	outputMat[1][1] = (inputMat[0][0]*inputMat[2][2] - inputMat[0][2]*inputMat[2][0])/determinant;
-	outputMat[2][1] = -(inputMat[0][0]*inputMat[1][2] - inputMat[0][2]*inputMat[1][0])/determinant;
-	outputMat[0][2] = (inputMat[1][0]*inputMat[2][1] - inputMat[1][1]*inputMat[2][0])/determinant;
-	outputMat[1][2] = -(inputMat[0][0]*inputMat[2][1] - inputMat[0][1]*inputMat[2][0])/determinant;
-	outputMat[2][2] = (inputMat[0][0]*inputMat[1][1] - inputMat[0][1]*inputMat[1][0])/determinant;
-
+	return;
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  void InterpolateFields
-//  \brief Interpolate cell field to particle location,
+//! \fn  void PushPosition
+//  \brief Basic position push RHS
 KOKKOS_INLINE_FUNCTION
-void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, const DvceEdgeFld4D<Real> &e0_,
-				const DualArray1D<RegionSize> &mbsize, const RegionIndcs &indcs, const int m,
-			  Real * E, Real * B ){
+void GRRHSVelocity( const Real * x, const Real * u, const bool is_minkowski, const Real spin, Real * RHS ){
+	
+  Real gl[4][4], gu[4][4], adm[3][3]; // Metric 
+  Real dg_dx1[4][4], dg_dx2[4][4], dg_dx3[4][4]; //Metric derivatives
+  Real gamma;
+  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, gl, gu); 
+  GetUpperAdmMetric( gu, adm );
+  gamma = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
+    + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
+  gamma = sqrt(1.0 + gamma);
+  bool get_upper = true;
+  ComputeMetricDerivatives(x[0], x[1], x[2], is_minkowski, spin, get_upper,
+                              dg_dx1, dg_dx2, dg_dx3);
+  Real (*dg_array[3])[4][4] = {&dg_dx1, &dg_dx2, &dg_dx3};
 
-	int ip = (prtcl_x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
-	int jp = (prtcl_x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
-	int kp = (prtcl_x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
-	Real &x1min = mbsize.d_view(m).x1min;
-	Real &x2min = mbsize.d_view(m).x2min;
-	Real &x3min = mbsize.d_view(m).x3min;
-	Real &x1max = mbsize.d_view(m).x1max;
-	Real &x2max = mbsize.d_view(m).x2max;
-	Real &x3max = mbsize.d_view(m).x3max;
-	Real x1v,x2v,x3v;
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-	Real Dx,Dy,Dz;
-	Dx = (x1max - x1min)/indcs.nx1;
-	Dy = (x2max - x2min)/indcs.nx2;
-	Dz = (x3max - x3min)/indcs.nx3;
-	// Interpolate Electric Field at new particle location x1, x2, x3
-	E[0] = e0_.x1e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
-	E[0] /= 3.0;
-	E[1] = e0_.x2e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
-	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
-	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
-	E[1] /= 3.0;
-	E[2] = e0_.x3e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
-	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
-	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
-	E[2] /= 3.0;
+  for (int dir = 0; dir<3; ++dir){
+    Real (&use_dx)[4][4] = *dg_array[dir]; 
 
-	// Interpolate Magnetic Field at new particle location x1, x2, x3
-	B[0] = b0_.x1f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
-	B[0] /= 3.0;
-	B[1] = b0_.x2f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
-	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
-	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
-	B[1] /= 3.0;
-	B[2] = b0_.x3f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
-	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
-	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
-	B[2] /= 3.0;
+    Real dx_alpha = 0.5*( use_dx[0][0] ); 
+    dx_alpha /= ( sqrt(pow(-gu[0][0],3)) ); 
 
+    Real dx_beta[3];
+    for (int ii=0; ii<3; ++ii){
+      dx_beta[ii] = -( use_dx[0][ii+1] )/( gu[0][0] );
+      dx_beta[ii] += gu[0][ii+1]*( use_dx[0][0] )/( SQR(gu[0][0]) );
+    }
+
+    Real dx_gamma[3][3];
+    for (int ii=0; ii<3; ++ii){
+      for (int ij=0; ij<3; ++ij){
+        dx_gamma[ii][ij] = ( use_dx[ii+1][ij+1] );
+        dx_gamma[ii][ij] -= 2.0*gu[0][ij+1]*( use_dx[0][ii+1] )/gu[0][0];
+        dx_gamma[ii][ij] += gu[0][ij+1]*gu[0][ii+1]*( use_dx[0][0] )/SQR(gu[0][0]);
+      }
+    }
+
+    RHS[dir] = -dx_alpha*gamma;
+    RHS[dir] += dx_beta[0]*u[0] + dx_beta[1]*u[1] + dx_beta[2]*u[2];
+    for (int ii=0; ii<3; ++ii){
+      for (int ij=0; ij<3; ++ij){
+        RHS[dir] -= 0.5*dx_gamma[ii][ij]*u[ii]*u[ij]/( gamma*sqrt(-gu[0][0]) );
+      }
+    }
+  }
+
+	return;
 }
 
 //----------------------------------------------------------------------------------------
@@ -796,3 +861,6 @@ void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat ){
 
   return;
 }
+=======
+#endif
+>>>>>>> particles_gr

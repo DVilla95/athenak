@@ -127,6 +127,10 @@ struct torus_pgen {
 
   torus_pgen torus;
 
+KOKKOS_INLINE_FUNCTION
+static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
+                       Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
+                       bool is_mnkwsk, Real bh_a, bool set_radius);
 } // namespace
 
 // Prototypes for user-defined BCs and history functions
@@ -215,6 +219,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       const bool prtcl_init_blob = !(prtcl_init_type.compare("blob"));
       const bool prtcl_init_rad = !(prtcl_init_type.compare("shell"));
       const bool is_gca = pmbp->ppart->is_gca;
+      const bool set_radius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
       // Check initialization type has been set
       if ( !(prtcl_init_rnd || prtcl_init_flow || prtcl_init_blob || prtcl_init_rad) ) {
         std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
@@ -418,55 +423,19 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 											u[0] = w0_(m,IVX,kp,jp,ip);
 											u[1] = w0_(m,IVY,kp,jp,ip);
 											u[2] = w0_(m,IVZ,kp,jp,ip);
-											Real gu[4][4], gl[4][4];
-											ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-											if ( u[0]*u[1]*u[2] < 1.0E-10 ) {
+											b[0] = bcc_(m,IBX,kp,jp,ip);
+											b[1] = bcc_(m,IBY,kp,jp,ip);
+											b[2] = bcc_(m,IBZ,kp,jp,ip);
+											if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
 												u[0] = 0.1*(0.5 - prtcl_gen.frand());
 												u[1] = 0.1*(0.5 - prtcl_gen.frand());
 												u[2] = 0.1*(0.5 - prtcl_gen.frand());
 											}
-											Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u0 = sqrt(u0 + massive); 
-											// Convert velocity to coordinate frame
-											Real alpha = sqrt(-1.0/gu[0][0]);
-											u[0] = u[0] + gu[0][1]*u0*alpha; 	
-											u[1] = u[1] + gu[0][2]*u0*alpha; 	
-											u[2] = u[2] + gu[0][3]*u0*alpha; 	
-											Real u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-											b[0] = bcc_(m,IBX,kp,jp,ip);
-											b[1] = bcc_(m,IBY,kp,jp,ip);
-											b[2] = bcc_(m,IBZ,kp,jp,ip);
-											Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
-														+ 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
-														+ 2.0*gl[3][2]*b[2]*b[1];
-											b_norm = sqrt(b_norm);
-											Real r_larmor = u_perp/q_over_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
-											while ( r_larmor > max_en || r_larmor < min_en ){
-												u[0] *= this_en/r_larmor;
-												u[1] *= this_en/r_larmor;
-												u[2] *= this_en/r_larmor;
-												u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-															+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-															+ 2.0*gl[3][2]*u[2]*u[1];
-												// u0 = sqrt(u0 + massive); 
-												u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-												r_larmor = u_perp/q_over_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
-											}
-											u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u0 = sqrt(u0 + massive); 
-											u[0] = u[0] - gu[0][1]*u0*alpha; 	
-											u[1] = u[1] - gu[0][2]*u0*alpha; 	
-											u[2] = u[2] - gu[0][3]*u0*alpha; 	
-											pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-											pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-											pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+                      InjectKineticPrtcls( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
+                                           coord.is_minkowski, coord.bh_spin, set_radius );
+											pr(IPVX,p) = u[0];
+											pr(IPVY,p) = u[1];
+											pr(IPVZ,p) = u[2];
 										} else {
 											// For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
 											pr(IPVX,p) = sqrt(this_en);
@@ -533,52 +502,16 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 											b[0] = bcc_(m,IBX,kp,jp,ip);
 											b[1] = bcc_(m,IBY,kp,jp,ip);
 											b[2] = bcc_(m,IBZ,kp,jp,ip);
-											Real gu[4][4], gl[4][4];
-											ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-											Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
-														+ 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
-														+ 2.0*gl[3][2]*b[2]*b[1];
-											b_norm = sqrt(b_norm);
-											if ( u[0]*u[1]*u[2] < 1.0E-10 ) {
+											if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
 												u[0] = 0.1*(0.5 - prtcl_gen.frand());
 												u[1] = 0.1*(0.5 - prtcl_gen.frand());
 												u[2] = 0.1*(0.5 - prtcl_gen.frand());
 											}
-											Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u0 = sqrt(u0 + massive); 
-											// Convert velocity to coordinate frame
-											Real alpha = sqrt(-1.0/gu[0][0]);
-											u[0] = u[0] + gu[0][1]*u0*alpha; 	
-											u[1] = u[1] + gu[0][2]*u0*alpha; 	
-											u[2] = u[2] + gu[0][3]*u0*alpha; 	
-											Real u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-											Real r_larmor = u_perp*q_over_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
-											while ( r_larmor > max_en || r_larmor < min_en ){
-												u[0] *= this_en/r_larmor;
-												u[1] *= this_en/r_larmor;
-												u[2] *= this_en/r_larmor;
-												u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-															+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-															+ 2.0*gl[3][2]*u[2]*u[1];
-												// u0 = sqrt(u0 + massive); 
-												u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-												r_larmor = u_perp/q_over_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
-											}
-											u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-														+ 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-														+ 2.0*gl[3][2]*u[2]*u[1];
-											u0 = sqrt(u0 + massive); 
-											u[0] = u[0] - gu[0][1]*u0*alpha; 	
-											u[1] = u[1] - gu[0][2]*u0*alpha; 	
-											u[2] = u[2] - gu[0][3]*u0*alpha; 	
-											pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-											pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-											pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+                      InjectKineticPrtcls( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
+                                           coord.is_minkowski, coord.bh_spin, set_radius );
+											pr(IPVX,p) = u[0];
+											pr(IPVY,p) = u[1];
+											pr(IPVZ,p) = u[2];
 										} else {
 											// For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
 											pr(IPVX,p) = sqrt(this_en);
@@ -1842,6 +1775,78 @@ Real A3(struct torus_pgen pgen, Real x1, Real x2, Real x3) {
 
   return atheta*(((1.0+SQR(pgen.spin/r))*SQR(x3)-sqrt_term)*isin_term/(r*sqrt_term)) +
          aphi*(pgen.spin*x3/(r*sqrt_term));
+}
+
+
+//----------------------------------------------------------------------------------------
+// Function to initialize kinetic (i.e. 3 velocity components) particles.
+
+KOKKOS_INLINE_FUNCTION
+static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
+                       Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
+                       bool is_mnkwsk, Real bh_a, bool set_radius) {
+    Real u_aux[3];
+    Real gu[4][4], gl[4][4];
+    ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
+    Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+          + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+          + 2.0*gl[3][2]*u[2]*u[1];
+    // Convert velocity to coordinate frame
+    if (set_radius) {
+      u0 = sqrt(u0 + massive); 
+      Real alpha = sqrt(-1.0/gu[0][0]);
+      u[0] = u[0] - gu[0][1]*u0*alpha; 	
+      u[1] = u[1] - gu[0][2]*u0*alpha; 	
+      u[2] = u[2] - gu[0][3]*u0*alpha; 	
+      Real u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+            + 2.0*gl[3][2]*u[2]*u[1];
+      u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
+      Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
+            + 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
+            + 2.0*gl[3][2]*b[2]*b[1];
+      b_norm = sqrt(b_norm);
+      Real r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
+      while ( r_larmor > max_en || r_larmor < min_en ){
+        u[0] *= this_en/r_larmor;
+        u[1] *= this_en/r_larmor;
+        u[2] *= this_en/r_larmor;
+        u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+              + 2.0*gl[3][2]*u[2]*u[1];
+        // u0 = sqrt(u0 + massive); 
+        u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
+        r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
+      }
+      u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+            + 2.0*gl[3][2]*u[2]*u[1];
+      u0 = sqrt(u0 + massive); 
+      u_aux[0] = u[0] + gu[0][1]*u0*alpha; 	
+      u_aux[1] = u[1] + gu[0][2]*u0*alpha; 	
+      u_aux[2] = u[2] + gu[0][3]*u0*alpha; 	
+    } else {
+      while ( u0 > max_en || u0 < min_en ){
+        if (u0 > max_en) {
+          u[0] /= 1.5;
+          u[1] /= 1.5;
+          u[2] /= 1.5;
+        } else if (u0 < min_en){
+          u[0] *= 1.5;
+          u[1] *= 1.5;
+          u[2] *= 1.5;
+        }
+        u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+              + 2.0*gl[3][2]*u[2]*u[1];
+      }
+      u_aux[0] = u[0]; 	
+      u_aux[1] = u[1]; 	
+      u_aux[2] = u[2]; 	
+    }
+    u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
+    u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
+    u[2] = gl[3][1]*u_aux[0] + gl[3][2]*u_aux[1] + gl[3][3]*u_aux[2];
 }
 
 } // namespace
