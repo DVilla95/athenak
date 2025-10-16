@@ -24,7 +24,7 @@ class MHD;
 class EquationOfState;
 
 // constants that enumerate ParticlesPusher options
-enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, boris, full_gr, gca_gr};
+enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, boris_gr, ham_geo, gca_gr, imr};
 
 // constants that enumerate ParticleTypes
 enum class ParticleType {cosmic_ray};
@@ -94,6 +94,7 @@ class Particles {
 
   void BorisStep( const Real dt, const bool only_v );
   void GeodesicIterations( const Real dt );
+  void GRLorentzIterations( const Real dt );
   void GCAIterations( const Real dt );
 
  private:
