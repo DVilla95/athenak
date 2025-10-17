@@ -42,6 +42,7 @@ struct ParticlesTaskIDs {
   TaskID recvp;
   TaskID csend;
   TaskID crecv;
+  TaskID newdt;
 };
 
 namespace particles {
@@ -91,6 +92,7 @@ class Particles {
   TaskStatus RecvP(Driver *pdriver, int stage);
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
+  TaskStatus NewTimeStep(Driver *pdriver, int stage);
 
   void BorisStepGR( const Real dt, const bool only_v );
   void HamiltonianGeodesicsIterations( const Real dt );

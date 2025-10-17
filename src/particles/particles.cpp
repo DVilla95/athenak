@@ -16,6 +16,7 @@
 #include "mesh/mesh.hpp"
 #include "bvals/bvals.hpp"
 #include "particles.hpp"
+#include "hamiltonian_gr.hpp"
 
 namespace particles {
 //----------------------------------------------------------------------------------------
@@ -157,6 +158,42 @@ void Particles::CreateParticleTags(ParameterInput *pin) {
               << std::endl;
     std::exit(EXIT_FAILURE);
   }
+}
+
+//----------------------------------------------------------------------------------------
+// ComputeNewdt()
+// Find new dt imposed by particle velocities
+TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
+	auto &pr = prtcl_rdata;
+	auto &pi = prtcl_idata;
+	const Real spin = pmy_pack->pcoord->coord_data.bh_spin;
+	const bool &multi_d = pmy_pack->pmesh->multi_d;
+	const bool &three_d = pmy_pack->pmesh->three_d;
+  auto gids = pmy_pack->gids;
+	const bool is_minkowski = pmy_pack->pcoord->coord_data.is_minkowski;
+	auto &mbsize = pmy_pack->pmb->mb_size;
+  Real dt1 = std::numeric_limits<float>::max();
+  Real dt2 = std::numeric_limits<float>::max();
+  Real dt3 = std::numeric_limits<float>::max();
+
+	Kokkos::parallel_reduce("part_newdt",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+		KOKKOS_LAMBDA(const int &p, Real &min_dt1, Real &min_dt2, Real &min_dt3) {
+		const Real x[3] = {pr(IPX,p), pr(IPY,p), pr(IPZ,p)};
+		const Real u[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
+    const int m = pi(PGID,p) - gids;
+    Real v[3];
+    GRRHSPosition(x, u, is_minkowski, spin, v);
+
+    min_dt1 = fmin((mbsize.d_view(m).dx1/fabs(v[0])), min_dt1);
+    min_dt2 = fmin((mbsize.d_view(m).dx2/fabs(v[1])), min_dt2);
+    min_dt3 = fmin((mbsize.d_view(m).dx3/fabs(v[2])), min_dt3);
+
+  }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
+  dtnew = dt1;
+  if (pmy_pack->pmesh->multi_d) { dtnew = std::min(dtnew, dt2); }
+  if (pmy_pack->pmesh->three_d) { dtnew = std::min(dtnew, dt3); }
+
+  return TaskStatus::complete;
 }
 
 } // namespace particles
