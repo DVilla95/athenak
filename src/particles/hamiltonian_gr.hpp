@@ -471,13 +471,11 @@ void GRLorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const 
     }
   }
   //Lower indeces of E to covariant for velocity push
-  a_vec[0] = E[0] - u_con[0];
-  a_vec[1] = E[1] - u_con[1];
-  a_vec[2] = E[2] - u_con[2];
+  for (int i = 0; i<3; ++i)
+    a_vec[i] = E[i] - u_con[i];
   Real push[3];
-  push[0] = glower[1][1]*a_vec[0] + glower[1][2]*a_vec[1] + glower[1][3]*a_vec[2];
-  push[1] = glower[2][1]*a_vec[0] + glower[2][2]*a_vec[1] + glower[2][3]*a_vec[2];
-  push[2] = glower[3][1]*a_vec[0] + glower[3][2]*a_vec[1] + glower[3][3]*a_vec[2];
+  for (int i = 0; i<3; ++i)
+    push[i] = glower[i+1][1]*a_vec[0] + glower[i+1][2]*a_vec[1] + glower[i+1][3]*a_vec[2];
 
   Real u0;
   //Lorentz factor in Normal frame
@@ -505,11 +503,11 @@ void GRLorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const 
     u_con[0]*B[1] - u_con[1]*B[0]
   };
   // Used a vector product, correct for volume
-  for (int i = 0; i < 3; ++i ){ push2[i] *= adm_det; }
+  for (int i = 0; i < 3; ++i )
+    push2[i] *= adm_det;
 
-  RHS[0] += q_over_m*(push[0] + push2[0]);
-  RHS[1] += q_over_m*(push[1] + push2[1]);
-  RHS[2] += q_over_m*(push[2] + push2[2]);
+  for (int i = 0; i<3; ++i)
+    RHS[i] += q_over_m*(push[i] + push2[i]);
 
 	return;
 }

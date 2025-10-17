@@ -231,7 +231,7 @@ void Particles::HamiltonianGeodesicsIterations( const Real dt ){
 		Real step_fac = 1.0;
     int m = pi(PGID,p) - gids;
     Real E[3], B[3];
-    Real resnorm;
+    int i1, i2;
 
     Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
     Real gamma;
@@ -255,42 +255,28 @@ void Particles::HamiltonianGeodesicsIterations( const Real dt ){
 		++n_iter;
 		if (n_iter > 5){ step_fac = 1E+3; }
 
-    resnorm = 0.0;
 		HamiltonEquation_Position(x_init, x_eval, v_init, v_eval, spin, RHS_eval_x);
 		HamiltonEquation_Velocity(x_init, x_eval, v_init, v_eval, x_step, spin, it_tol, RHS_eval_v);
 
 		// First Jacobian for position
-		// Variation along x
-		x_grad[0] = x_eval[0] + x_step;
-		x_grad[1] = x_eval[1]; x_grad[2] = x_eval[2];
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_1);
-		x_grad[0] = x_eval[0] - x_step;
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[0][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*x_step); }
-		Jacob[0][0] += 1.0; // Diagonal terms
-		// Variation along y
-		x_grad[1] = x_eval[1] + x_step;
-		x_grad[0] = x_eval[0]; x_grad[2] = x_eval[2];
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_1);
-		x_grad[1] = x_eval[1] - x_step;
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[1][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*x_step); }
-		Jacob[1][1] += 1.0; // Diagonal terms
-		// Variation along z
-		x_grad[2] = x_eval[2] + x_step;
-		x_grad[0] = x_eval[0]; x_grad[1] = x_eval[1];
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_1);
-		x_grad[2] = x_eval[2] - x_step;
-		HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[2][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*x_step); }
-		Jacob[2][2] += 1.0; // Diagonal terms
+    for (int dir = 0; dir<3; ++dir) {
+      if (dir == 0) { i1 = 1; i2 = 2; }
+      else if (dir == 1) { i1 = 0; i2 = 2; }
+      else if (dir == 2) { i1 = 0; i2 = 1; }
+      x_grad[dir] = x_eval[dir] + x_step;
+      x_grad[i1] = x_eval[i1]; x_grad[i2] = x_eval[i2];
+      HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_1);
+      x_grad[dir] = x_eval[dir] - x_step;
+      HamiltonEquation_Position(x_init, x_grad, v_init, v_eval, spin, RHS_grad_2);
+      for (int i=0; i<3; ++i) { Jacob[dir][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*x_step); }
+      Jacob[dir][dir] += 1.0; // Diagonal terms
+    }
 		ComputeInverseMatrix3( Jacob, inv_Jacob );
 
 		// Store values for use with velocity Jacobian
 		for (int i=0; i<3; ++i) {
       x_grad[i] = x_eval[i];
       res_x[i] = x_grad[i] - x_init[i] - RHS_eval_x[i]*dt;
-      resnorm += SQR(res_x[i]);
     }
 
 		for (int i=0; i<3; ++i){
@@ -298,42 +284,24 @@ void Particles::HamiltonianGeodesicsIterations( const Real dt ){
 		}
 
 		// Then Jacobian for velocity
-		// Variation along x
-		// Not that the velocity here is covariant, thus derivatives along 
-		// a given velocity direction result in "upper" indeces
-		// and the lower indeces are provided by the rest function itself
-    //
-		v_grad[0] = v_eval[0] + v_step;
-		v_grad[1] = v_eval[1]; v_grad[2] = v_eval[2];
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_1);
-		v_grad[0] = v_eval[0] - v_step;
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[0][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step); }
-		Jacob[0][0] += 1.0; // Diagonal terms
-		// Variation along y
-		v_grad[1] = v_eval[1] + v_step;
-		v_grad[0] = v_eval[0]; v_grad[2] = v_eval[2];
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_1);
-		v_grad[1] = v_eval[1] - v_step;
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[1][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step); }
-		Jacob[1][1] += 1.0; // Diagonal terms
-		// Variation along z
-		v_grad[2] = v_eval[2] + v_step;
-		v_grad[0] = v_eval[0]; v_grad[1] = v_eval[1];
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_1);
-		v_grad[2] = v_eval[2] - v_step;
-		HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_2);
-		for (int i=0; i<3; ++i) { Jacob[2][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step); }
-		Jacob[2][2] += 1.0; // Diagonal terms
+    for (int dir = 0; dir<3; ++dir) {
+      if (dir == 0) { i1 = 1; i2 = 2; }
+      else if (dir == 1) { i1 = 0; i2 = 2; }
+      else if (dir == 2) { i1 = 0; i2 = 1; }
+      v_grad[dir] = v_eval[dir] + v_step;
+      v_grad[i1] = v_eval[i1]; v_grad[i2] = v_eval[i2];
+      HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_1);
+      v_grad[dir] = v_eval[dir] - v_step;
+      HamiltonEquation_Velocity(x_init, x_grad, v_init, v_grad, x_step, spin, it_tol, RHS_grad_2);
+      for (int i=0; i<3; ++i) { Jacob[dir][i] = -(RHS_grad_1[i] - RHS_grad_2[i])*dt/(2.0*v_step); }
+      Jacob[dir][dir] += 1.0; // Diagonal terms
+    }
 		ComputeInverseMatrix3( Jacob, inv_Jacob );
 		
 		for (int i=0; i<3; ++i) {
       v_grad[i] = v_eval[i];
       res_v[i] = (v_grad[i] - v_init[i] - RHS_eval_v[i]*dt);
     }
-    for (int i = 0; i<3; ++i) 
-      resnorm += SQR(res_v[i]);
 
 		for (int i=0; i<3; ++i){
 			for (int j=0; j<3; ++j){ v_eval[i] -= inv_Jacob[i][j]*res_v[j]; }
@@ -406,6 +374,7 @@ void Particles::GRLorentzIterations( const Real dt ){
     int m = pi(PGID,p) - gids;
     Real E[3], B[3];
     Real resnorm, resold;
+    int i1, i2;
 
     GRRHSPosition(x_init, v_init, is_minkowski, spin, RHS_eval_x);
     x_eval[0] = x_init[0] + dt*(RHS_eval_x[0]) ;
@@ -445,110 +414,55 @@ void Particles::GRLorentzIterations( const Real dt ){
       v_mid[i] = 0.5*(v_eval[i] + v_init[i]);
     }
 			
-		// First Jacobian for position
-		// Variation along x
-		x_grad[0] = 0.5*(x_init[0] + x_eval[0] + x_step);
-		x_grad[1] = x_mid[1]; x_grad[2] = x_mid[2];
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		x_grad[0] = 0.5*(x_init[0] + x_eval[0] - x_step);
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[0][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
-      Jacob[0][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
-    }
-		Jacob[0][0] += 1.0; // Diagonal terms
+    // Position
+    for (int dir = 0; dir<3; ++dir) {
+      int full_idx = dir;
+      if (dir == 0) { i1 = 1; i2 = 2; }
+      else if (dir == 1) { i1 = 0; i2 = 2; }
+      else if (dir == 2) { i1 = 0; i2 = 1; }
 
-		// Variation along y
-		x_grad[1] = 0.5*(x_init[1] + x_eval[1] + x_step);
-		x_grad[0] = x_mid[0]; x_grad[2] = x_mid[2];
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		x_grad[1] = 0.5*(x_init[1] + x_eval[1] - x_step);
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[1][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
-      Jacob[1][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
+      x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir] + x_step);
+      x_grad[i1] = x_mid[i1]; x_grad[i2] = x_mid[i2];
+      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
+      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
+      InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
+      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+      x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir] - x_step);
+      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
+      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
+      InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
+      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+      for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
+        Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
+        Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
+      }
+      Jacob[full_idx][full_idx] += 1.0; // Diagonal terms
     }
-		Jacob[1][1] += 1.0; // Diagonal terms
-                        //
-		// Variation along z
-		x_grad[2] = 0.5*(x_init[2] + x_eval[2] + x_step);
-		x_grad[0] = x_mid[0]; x_grad[1] = x_mid[1];
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		x_grad[2] = 0.5*(x_init[2] + x_eval[2] - x_step);
-    GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
-    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[2][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
-      Jacob[2][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
-    }
-		Jacob[2][2] += 1.0; // Diagonal terms
 
     InterpolateFields( x_mid, b0_, e0_, mbsize, indcs, m, E, B );
 
-		v_grad[0] = 0.5*(v_init[0] + v_eval[0] + v_step);
-		v_grad[1] = v_mid[1]; v_grad[2] = v_mid[2];
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		v_grad[0] = 0.5*(v_init[0] + v_eval[0] - v_step);
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[3][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
-      Jacob[3][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
-    }
-		Jacob[3][3] += 1.0; // Diagonal terms
+    // Velocity
+    for (int dir = 0; dir<3; ++dir) {
+      int full_idx = dir + 3;
+      if (dir == 0) { i1 = 1; i2 = 2; }
+      else if (dir == 1) { i1 = 0; i2 = 2; }
+      else if (dir == 2) { i1 = 0; i2 = 1; }
 
-		// Variation along y
-		v_grad[1] = 0.5*(v_init[1] + v_eval[1] + v_step);
-		v_grad[0] = v_mid[0]; v_grad[2] = v_mid[2];
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		v_grad[1] = 0.5*(v_init[1] + v_eval[1] - v_step);
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[4][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
-      Jacob[4][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
+      v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] + v_step);
+      v_grad[i1] = v_mid[i1]; v_grad[i2] = v_mid[i2];
+      GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
+      GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
+      GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+      v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] - v_step);
+      GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
+      GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
+      GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+      for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
+        Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
+        Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
+      }
+      Jacob[full_idx][full_idx] += 1.0; // Diagonal terms
     }
-		Jacob[4][4] += 1.0; // Diagonal terms
-
-		// Variation along z
-		v_grad[2] = 0.5*(v_init[2] + v_eval[2] + v_step);
-		v_grad[0] = v_mid[0]; v_grad[1] = v_mid[1];
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-		v_grad[2] = 0.5*(v_init[2] + v_eval[2] - v_step);
-    GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
-    GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
-    GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-		for (int i=0; i<3; ++i) {
-      Jacob[5][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
-      Jacob[5][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
-    }
-		Jacob[5][5] += 1.0; // Diagonal terms
-                        //
     
     // This not ideal: Size of matrix is fixed
     Real Jacob1D[6*6];
