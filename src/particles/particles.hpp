@@ -72,6 +72,7 @@ class Particles {
   Real min_radius; // This radius is used to destroy particles before they may reach the horizon
   Real charge_over_mass; //Store charge over mass ratio
 	bool is_gca; // Store if the system in question has only two velocity components
+  Real prtcl_push_safety; // "Safety factor" to ensure time-step doesn't cause issues when iterating
 
   ParticlesPusher pusher;
 
