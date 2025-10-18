@@ -42,6 +42,7 @@ struct ParticlesTaskIDs {
   TaskID recvp;
   TaskID csend;
   TaskID crecv;
+  TaskID newdt;
 };
 
 namespace particles {
@@ -71,6 +72,7 @@ class Particles {
   Real min_radius; // This radius is used to destroy particles before they may reach the horizon
   Real charge_over_mass; //Store charge over mass ratio
 	bool is_gca; // Store if the system in question has only two velocity components
+  Real prtcl_push_safety; // "Safety factor" to ensure time-step doesn't cause issues when iterating
 
   ParticlesPusher pusher;
 
@@ -91,6 +93,7 @@ class Particles {
   TaskStatus RecvP(Driver *pdriver, int stage);
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
+  TaskStatus NewTimeStep(Driver *pdriver, int stage);
 
   void BorisStepGR( const Real dt, const bool only_v );
   void HamiltonianGeodesicsIterations( const Real dt );

@@ -16,6 +16,7 @@
 #include "mesh/mesh.hpp"
 #include "bvals/bvals.hpp"
 #include "particles.hpp"
+#include "hamiltonian_gr.hpp"
 
 namespace particles {
 //----------------------------------------------------------------------------------------
@@ -32,6 +33,7 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
 
   // read number of particles per cell, and calculate number of particles this pack
   Real ppc = pin->GetOrAddReal("particles","ppc",1.0);
+  Real prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",2.0);
 
   // compute number of particles as real number, since ppc can be < 1
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -157,6 +159,58 @@ void Particles::CreateParticleTags(ParameterInput *pin) {
               << std::endl;
     std::exit(EXIT_FAILURE);
   }
+}
+
+//----------------------------------------------------------------------------------------
+// ComputeNewdt()
+// Find new dt imposed by particle velocities
+TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
+	auto &pr = prtcl_rdata;
+	auto &pi = prtcl_idata;
+	const Real &q_over_m = charge_over_mass;
+	auto &b0_ = pmy_pack->pmhd->b0;
+	auto &e0_ = pmy_pack->pmhd->efld;
+	const Real spin = pmy_pack->pcoord->coord_data.bh_spin;
+	const bool &multi_d = pmy_pack->pmesh->multi_d;
+	const bool &three_d = pmy_pack->pmesh->three_d;
+  auto gids = pmy_pack->gids;
+	const bool is_minkowski = pmy_pack->pcoord->coord_data.is_minkowski;
+	auto &mbsize = pmy_pack->pmb->mb_size;
+	auto &indcs = pmy_pack->pmesh->mb_indcs;
+  auto dt = (pmy_pack->pmesh->dt);
+  auto prtcl_psf = prtcl_push_safety; // Assume during iteration particle velocity might be larger than at start of iterative push
+  Real dt1 = std::numeric_limits<float>::max();
+  Real dt2 = std::numeric_limits<float>::max();
+  Real dt3 = std::numeric_limits<float>::max();
+
+	Kokkos::parallel_reduce("part_newdt",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+		KOKKOS_LAMBDA(const int &p, Real &min_dt1, Real &min_dt2, Real &min_dt3) {
+		const Real x[3] = {pr(IPX,p), pr(IPY,p), pr(IPZ,p)};
+		Real u[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
+    const int m = pi(PGID,p) - gids;
+    Real rhs_v[3], E[3], B[3];
+    GRRHSVelocity(x, u, is_minkowski, spin, rhs_v);
+    InterpolateFields( x, b0_, e0_, mbsize, indcs, m, E, B );
+    GRLorentz_Terms(x, u, E, B, is_minkowski, spin, q_over_m, rhs_v);
+    u[0] += dt*(rhs_v[0]) ;
+    u[1] += dt*(rhs_v[1]) ;
+    u[2] += dt*(rhs_v[2]) ;
+
+    Real v[3];
+    GRRHSPosition(x, u, is_minkowski, spin, v);
+    for (int i=0; i<3; ++i)
+      v[i] *= prtcl_psf;
+
+    min_dt1 = fmin((mbsize.d_view(m).dx1/fabs(v[0])), min_dt1);
+    min_dt2 = fmin((mbsize.d_view(m).dx2/fabs(v[1])), min_dt2);
+    min_dt3 = fmin((mbsize.d_view(m).dx3/fabs(v[2])), min_dt3);
+
+  }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
+  dtnew = dt1;
+  if (pmy_pack->pmesh->multi_d) { dtnew = std::min(dtnew, dt2); }
+  if (pmy_pack->pmesh->three_d) { dtnew = std::min(dtnew, dt3); }
+
+  return TaskStatus::complete;
 }
 
 } // namespace particles
