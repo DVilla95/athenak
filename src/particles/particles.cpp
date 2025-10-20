@@ -33,7 +33,7 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
 
   // read number of particles per cell, and calculate number of particles this pack
   Real ppc = pin->GetOrAddReal("particles","ppc",1.0);
-  Real prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",2.0);
+  prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",2.0);
 
   // compute number of particles as real number, since ppc can be < 1
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -201,9 +201,9 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     for (int i=0; i<3; ++i)
       v[i] *= prtcl_psf;
 
-    min_dt1 = fmin((mbsize.d_view(m).dx1/fabs(v[0])), min_dt1);
-    min_dt2 = fmin((mbsize.d_view(m).dx2/fabs(v[1])), min_dt2);
-    min_dt3 = fmin((mbsize.d_view(m).dx3/fabs(v[2])), min_dt3);
+    min_dt1 = std::fmin((mbsize.d_view(m).dx1/std::fabs(v[0])), min_dt1);
+    min_dt2 = std::fmin((mbsize.d_view(m).dx2/std::fabs(v[1])), min_dt2);
+    min_dt3 = std::fmin((mbsize.d_view(m).dx3/std::fabs(v[2])), min_dt3);
 
   }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   dtnew = dt1;
