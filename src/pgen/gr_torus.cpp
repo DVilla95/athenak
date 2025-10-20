@@ -1785,19 +1785,13 @@ KOKKOS_INLINE_FUNCTION
 static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
                        Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
                        bool is_mnkwsk, Real bh_a, bool set_radius) {
+    // u is controvariant velocity in normal frame taken from fluid
     Real u_aux[3];
     Real gu[4][4], gl[4][4];
     ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
-    Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-          + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-          + 2.0*gl[3][2]*u[2]*u[1];
     // Convert velocity to coordinate frame
+    Real alpha = sqrt(-1.0/gu[0][0]);
     if (set_radius) {
-      u0 = sqrt(u0 + massive); 
-      Real alpha = sqrt(-1.0/gu[0][0]);
-      u[0] = u[0] - gu[0][1]*u0*alpha; 	
-      u[1] = u[1] - gu[0][2]*u0*alpha; 	
-      u[2] = u[2] - gu[0][3]*u0*alpha; 	
       Real u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
             + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
             + 2.0*gl[3][2]*u[2]*u[1];
@@ -1814,18 +1808,21 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
         u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
               + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
               + 2.0*gl[3][2]*u[2]*u[1];
-        // u0 = sqrt(u0 + massive); 
         u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
         r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
       }
-      u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+      u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
             + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
             + 2.0*gl[3][2]*u[2]*u[1];
-      u0 = sqrt(u0 + massive); 
-      u_aux[0] = u[0] + gu[0][1]*u0*alpha; 	
-      u_aux[1] = u[1] + gu[0][2]*u0*alpha; 	
-      u_aux[2] = u[2] + gu[0][3]*u0*alpha; 	
+      u_perp = sqrt(u_perp + massive)/alpha; 
+      u_aux[0] = u[0] + gu[0][1]*u_perp; 	
+      u_aux[1] = u[1] + gu[0][2]*u_perp; 	
+      u_aux[2] = u[2] + gu[0][3]*u_perp; 	
     } else {
+      Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+          + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+          + 2.0*gl[3][2]*u[2]*u[1];
+      u0 = sqrt(u0 + massive)/alpha;
       while ( u0 > max_en || u0 < min_en ){
         if (u0 > max_en) {
           u[0] /= 1.5;
@@ -1839,10 +1836,11 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
         u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
               + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
               + 2.0*gl[3][2]*u[2]*u[1];
+        u0 = sqrt(u0 + massive)/alpha;
       }
-      u_aux[0] = u[0]; 	
-      u_aux[1] = u[1]; 	
-      u_aux[2] = u[2]; 	
+      u_aux[0] = u[0] + gu[0][1]*u0; 	
+      u_aux[1] = u[1] + gu[0][2]*u0; 	
+      u_aux[2] = u[2] + gu[0][3]*u0; 	
     }
     u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
     u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
