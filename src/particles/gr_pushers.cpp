@@ -210,7 +210,7 @@ void Particles::HamiltonianGeodesicsIterations( const Real dt ){
 	const Real v_step = 1.0E-08;
 	Real avg_iter = 0.0;
 
-	Kokkos::parallel_reduce("part_ham_geo",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+	Kokkos::parallel_reduce("part_ham_geo",Kokkos::RangePolicy<>(DevExeSpace(),0,nprtcl_thispack),
 		KOKKOS_LAMBDA(const int p, Real &aux_n_iter) {
 	//par_for("part_fullgr",DevExeSpace(),0,(nprtcl_thispack-1),
 	//KOKKOS_LAMBDA(const int p) {
@@ -354,7 +354,7 @@ void Particles::GRLorentzIterations( const Real dt ){
 	Real avg_iter = 0.0;
   int ndim = 6;
 
-	Kokkos::parallel_reduce("part_grlorentz",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+	Kokkos::parallel_reduce("part_grlorentz",Kokkos::RangePolicy<>(DevExeSpace(),0,nprtcl_thispack),
 		KOKKOS_LAMBDA(const int p, Real &aux_n_iter) {
 
 		// Iterate per particle such that those that converge quicker don't go through as many iterations
