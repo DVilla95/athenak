@@ -67,30 +67,31 @@ void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
 KOKKOS_INLINE_FUNCTION
 void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, const DvceEdgeFld4D<Real> &e0_,
 				const DualArray1D<RegionSize> &mbsize, const RegionIndcs &indcs, const int m,
-			  Real * E, Real * B ){
+			  Real * E, Real * B, bool &out_of_bounds ){
 
 	int ip = (prtcl_x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
 	int jp = (prtcl_x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
 	int kp = (prtcl_x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
+  // Sanity check: sometimes particles can make excessively large steps during NL iterations.
+  // Returning the boolean as false allows to reset the iteration variables without crashing the whole code
+  if (ip < 0 || jp < 0 || kp < 0
+      || ip > (indcs.ie + indcs.ng) || jp > (indcs.je + indcs.ng) || kp > (indcs.ke + indcs.ng) ) {
+    out_of_bounds = true;
+    return;
+  }
 	Real &x1min = mbsize.d_view(m).x1min;
 	Real &x2min = mbsize.d_view(m).x2min;
 	Real &x3min = mbsize.d_view(m).x3min;
 	Real &x1max = mbsize.d_view(m).x1max;
 	Real &x2max = mbsize.d_view(m).x2max;
 	Real &x3max = mbsize.d_view(m).x3max;
-	Real x1v,x2v,x3v;
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-	Real Dx,Dy,Dz;
-	Dx = (x1max - x1min)/indcs.nx1;
-	Dy = (x2max - x2min)/indcs.nx2;
-	Dz = (x3max - x3min)/indcs.nx3;
+	Real x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
+	Real x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+	Real x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+	Real Dx = (x1max - x1min)/indcs.nx1;
+	Real Dy = (x2max - x2min)/indcs.nx2;
+	Real Dz = (x3max - x3min)/indcs.nx3;
 	// Interpolate Electric Field at new particle location x1, x2, x3
-  for (int i = 0; i<3; ++i) {
-    E[i] = 0.0;
-    B[i] = 0.0;
-  }
 
 	E[0] = e0_.x1e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
 	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
@@ -123,7 +124,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 //! \fn  void LUDecomposition
 //  \brief Compute matrix to use as Lower and Upper triangular decomposition in matrix inversion
 KOKKOS_INLINE_FUNCTION
-void LUDecomposition( const int ndim, Real * LUMat, int * perm ){
+void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fail ){
 
     for (int i = 0; i<ndim; ++i)
       perm[i] = i;
@@ -138,6 +139,11 @@ void LUDecomposition( const int ndim, Real * LUMat, int * perm ){
           fixp = i;
         }
       }
+
+      if (maxval < Real(1e-14)) {
+        fail = true;
+        return;
+      } 
 
       if (fixp != k) {
         Real tmp = perm[fixp];
@@ -193,7 +199,7 @@ void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const
 //! \fn  void InvertMatrix
 //  \brief Compute the inverse of an nxn matrix as a 1D array. the input should also be a 1D representation of the matrix
 KOKKOS_INLINE_FUNCTION
-void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat ){
+void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat, bool &fail ){
 
   // Because ndim is determined at runtime
   // Use 1D arrays and deal manually with column/row
@@ -207,7 +213,13 @@ void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat ){
     LUMat[ii] = inputMat[ii];
   }
 
-  LUDecomposition(ndim, LUMat, perm_arr);
+  bool has_error = false;
+  LUDecomposition(ndim, LUMat, perm_arr, has_error);
+  if (has_error) {
+    fail = true;
+    return;
+  }
+
 
   for (int i = 0; i < ndim; ++i) {
     for (int ii = 0; ii<ndim; ++ii)

@@ -177,6 +177,7 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 	const bool is_minkowski = pmy_pack->pcoord->coord_data.is_minkowski;
 	auto &mbsize = pmy_pack->pmb->mb_size;
 	auto &indcs = pmy_pack->pmesh->mb_indcs;
+  const int nghst = indcs.ng;
   auto dt = (pmy_pack->pmesh->dt);
   auto prtcl_psf = prtcl_push_safety; // Assume during iteration particle velocity might be larger than at start of iterative push
   Real dt1 = std::numeric_limits<float>::max();
@@ -190,7 +191,11 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     const int m = pi(PGID,p) - gids;
     Real rhs_v[3], E[3], B[3];
     GRRHSVelocity(x, u, is_minkowski, spin, rhs_v);
-    InterpolateFields( x, b0_, e0_, mbsize, indcs, m, E, B );
+    int ip = (x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
+    int jp = (x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
+    int kp = (x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
+    bool out_of_bounds = false;
+    InterpolateFields( x, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
     GRLorentz_Terms(x, u, E, B, is_minkowski, spin, q_over_m, rhs_v);
     u[0] += dt*(rhs_v[0]) ;
     u[1] += dt*(rhs_v[1]) ;
@@ -198,12 +203,23 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 
     Real v[3];
     GRRHSPosition(x, u, is_minkowski, spin, v);
-    for (int i=0; i<3; ++i)
+    for (int i=0; i<3; ++i) {
+      v[i] = std::fabs(v[i]);
       v[i] *= prtcl_psf;
+    }
 
-    min_dt1 = std::fmin((mbsize.d_view(m).dx1/std::fabs(v[0])), min_dt1);
-    min_dt2 = std::fmin((mbsize.d_view(m).dx2/std::fabs(v[1])), min_dt2);
-    min_dt3 = std::fmin((mbsize.d_view(m).dx3/std::fabs(v[2])), min_dt3);
+    // If a particle is almost at the boundary of a meshblock
+    // you have nghost*dx space before the InterpolateFields function goes into segmentation fault
+    min_dt1 = std::fmin(( mbsize.d_view(m).dx1*nghst/v[0] ), min_dt1);
+    min_dt2 = std::fmin(( mbsize.d_view(m).dx2*nghst/v[1] ), min_dt2);
+    min_dt3 = std::fmin(( mbsize.d_view(m).dx3*nghst/v[2] ), min_dt3);
+
+    Real omdt = 0.0;
+    Real omega = 0.0;
+    for (int i = 0; i<3; ++i)
+      omega += SQR(B[i]);
+    omega *= q_over_m;
+    min_dt1 = std::fmin(min_dt1, std::fabs(0.25/omega));
 
   }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   dtnew = dt1;

@@ -184,6 +184,7 @@ void Particles::GCAIterations( const Real dt ){
 		Real x_grad[3];
 		Real RHS_grad_1[3], RHS_grad_2[3];
 		int n_iter = 0;
+    bool has_failed = false;
 
 		//Construct a ``full velocity vector'' starting from the parallel velocity, drift and the magnetic momentum
 		Real glower[4][4], gupper[4][4], ADM_upper[3][3]; // Metric 
@@ -195,7 +196,7 @@ void Particles::GCAIterations( const Real dt ){
 
 		int m = pi(PGID,p) - gids;
 		Real E[3], B[3], b[3], b_low[3];
-		InterpolateFields( x_init, b0_, e0_, mbsize, indcs, m, E, B );
+    InterpolateFields( x_init, b0_, e0_, mbsize, indcs, m, E, B, has_failed );
 		//Compute B norm
 		Real B_norm = 0.0;
 		for (int i1 = 0; i1<3; ++i1) {
@@ -259,7 +260,7 @@ void Particles::GCAIterations( const Real dt ){
 		
 		//Construct a ``full velocity vector'' starting from the parallel velocity and the magnetic momentum
 		ComputeMetricAndInverse(x_grad[0],x_grad[1],x_grad[2], false, spin, glower, gupper); 
-		InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B );
+    InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B, has_failed );
 		//Compute B norm
 		B_norm = 0.0;
 		for (int i1 = 0; i1<3; ++i1) {
@@ -312,7 +313,7 @@ void Particles::GCAIterations( const Real dt ){
 			|| fabs(v_par_eval - v_par_prev) > it_tol )
 				 );
 
-		InterpolateFields( x_eval, b0_, e0_, mbsize, indcs, m, E, B );
+    InterpolateFields( x_eval, b0_, e0_, mbsize, indcs, m, E, B, has_failed );
 		//Compute B norm
 		B_norm = 0.0;
 		for (int i1 = 0; i1<3; ++i1) {
