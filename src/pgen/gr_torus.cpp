@@ -46,6 +46,7 @@
 #include "dyn_grmhd/dyn_grmhd.hpp"
 
 #include "particles/particles.hpp"
+#include "particles/particles_helpers.hpp"
 
 #include <Kokkos_Random.hpp>
 
@@ -393,14 +394,14 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                         u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
                       }
                     }
-										if (!is_gca) {
-											pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-											pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-											pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-										} else {
-											pr(IPVX,p) = sqrt(u_0);
-											pr(IPVY,p) = 0.001;
-										}
+                    if (!is_gca) {
+                      pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+                      pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+                      pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+                    } else {
+                      pr(IPVX,p) = sqrt(u_0);
+                      pr(IPVY,p) = 0.001;
+                    }
                     // TODO Currently the "flow_align" initialization assumes that the fluid already has velocity defined
                     // Meaning this initialization only makes sense for restarts. One should move particle initialization
                     // later in the code if particles have to be present from the beginning
@@ -418,29 +419,29 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                       jp = (x2v - x2min)/size.d_view(m).dx2 + js;
                       kp = (x3v - x3min)/size.d_view(m).dx3 + ks;                  
                     }
-										if (!is_gca){
-											// MHD stores contravariant velocity in normal frame
-											u[0] = w0_(m,IVX,kp,jp,ip);
-											u[1] = w0_(m,IVY,kp,jp,ip);
-											u[2] = w0_(m,IVZ,kp,jp,ip);
-											b[0] = bcc_(m,IBX,kp,jp,ip);
-											b[1] = bcc_(m,IBY,kp,jp,ip);
-											b[2] = bcc_(m,IBZ,kp,jp,ip);
-											if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
-												u[0] = 0.1*(0.5 - prtcl_gen.frand());
-												u[1] = 0.1*(0.5 - prtcl_gen.frand());
-												u[2] = 0.1*(0.5 - prtcl_gen.frand());
-											}
+                    if (!is_gca){
+                      // MHD stores contravariant velocity in normal frame
+                      u[0] = w0_(m,IVX,kp,jp,ip);
+                      u[1] = w0_(m,IVY,kp,jp,ip);
+                      u[2] = w0_(m,IVZ,kp,jp,ip);
+                      b[0] = bcc_(m,IBX,kp,jp,ip);
+                      b[1] = bcc_(m,IBY,kp,jp,ip);
+                      b[2] = bcc_(m,IBZ,kp,jp,ip);
+                      if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
+                        u[0] = 0.1*(0.5 - prtcl_gen.frand());
+                        u[1] = 0.1*(0.5 - prtcl_gen.frand());
+                        u[2] = 0.1*(0.5 - prtcl_gen.frand());
+                      }
                       InjectKineticPrtcls( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
                                            coord.is_minkowski, coord.bh_spin, set_radius );
-											pr(IPVX,p) = u[0];
-											pr(IPVY,p) = u[1];
-											pr(IPVZ,p) = u[2];
-										} else {
-											// For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
-											pr(IPVX,p) = sqrt(this_en);
-											pr(IPVY,p) = 0.0001;
-										}
+                      pr(IPVX,p) = u[0];
+                      pr(IPVY,p) = u[1];
+                      pr(IPVZ,p) = u[2];
+                    } else {
+                      // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
+                      pr(IPVX,p) = sqrt(this_en);
+                      pr(IPVY,p) = 0.0001;
+                    }
                     pr(IPX,p) = x1v;
                     pr(IPY,p) = x2v;
                     pr(IPZ,p) = x3v;
@@ -491,32 +492,32 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                       continue;
                     }
                     found_mb = true;
-										if (!is_gca) {
-											int ip = (x1v - x1min)/size.d_view(m).dx1 + is;
-											int jp = (x2v - x2min)/size.d_view(m).dx2 + js;
-											int kp = (x3v - x3min)/size.d_view(m).dx3 + ks;
-											// MHD stores contravariant velocity in normal frame
-											u[0] = w0_(m,IVX,kp,jp,ip);
-											u[1] = w0_(m,IVY,kp,jp,ip);
-											u[2] = w0_(m,IVZ,kp,jp,ip);
-											b[0] = bcc_(m,IBX,kp,jp,ip);
-											b[1] = bcc_(m,IBY,kp,jp,ip);
-											b[2] = bcc_(m,IBZ,kp,jp,ip);
-											if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
-												u[0] = 0.1*(0.5 - prtcl_gen.frand());
-												u[1] = 0.1*(0.5 - prtcl_gen.frand());
-												u[2] = 0.1*(0.5 - prtcl_gen.frand());
-											}
+                    if (!is_gca) {
+                      int ip = (x1v - x1min)/size.d_view(m).dx1 + is;
+                      int jp = (x2v - x2min)/size.d_view(m).dx2 + js;
+                      int kp = (x3v - x3min)/size.d_view(m).dx3 + ks;
+                      // MHD stores contravariant velocity in normal frame
+                      u[0] = w0_(m,IVX,kp,jp,ip);
+                      u[1] = w0_(m,IVY,kp,jp,ip);
+                      u[2] = w0_(m,IVZ,kp,jp,ip);
+                      b[0] = bcc_(m,IBX,kp,jp,ip);
+                      b[1] = bcc_(m,IBY,kp,jp,ip);
+                      b[2] = bcc_(m,IBZ,kp,jp,ip);
+                      if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
+                        u[0] = 0.1*(0.5 - prtcl_gen.frand());
+                        u[1] = 0.1*(0.5 - prtcl_gen.frand());
+                        u[2] = 0.1*(0.5 - prtcl_gen.frand());
+                      }
                       InjectKineticPrtcls( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
                                            coord.is_minkowski, coord.bh_spin, set_radius );
-											pr(IPVX,p) = u[0];
-											pr(IPVY,p) = u[1];
-											pr(IPVZ,p) = u[2];
-										} else {
-											// For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
-											pr(IPVX,p) = sqrt(this_en);
-											pr(IPVY,p) = 0.0001;
-										}
+                      pr(IPVX,p) = u[0];
+                      pr(IPVY,p) = u[1];
+                      pr(IPVZ,p) = u[2];
+                    } else {
+                      // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
+                      pr(IPVX,p) = sqrt(this_en);
+                      pr(IPVY,p) = 0.0001;
+                    }
                     pr(IPX,p) = x1v;
                     pr(IPY,p) = x2v;
                     pr(IPZ,p) = x3v;
@@ -1785,44 +1786,47 @@ KOKKOS_INLINE_FUNCTION
 static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
                        Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
                        bool is_mnkwsk, Real bh_a, bool set_radius) {
-    // u is controvariant velocity in normal frame taken from fluid
+    // u is contravariant in normal frame
     Real u_aux[3];
-    Real gu[4][4], gl[4][4];
+    Real gu[4][4], gl[4][4], adm[3][3];
     ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
-    // Convert velocity to coordinate frame
+    GetUpperAdmMetric( gu, adm );
     Real alpha = sqrt(-1.0/gu[0][0]);
+    // Convert velocity to coordinate frame
     if (set_radius) {
-      Real u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-            + 2.0*gl[3][2]*u[2]*u[1];
-      u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
       Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
             + 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
             + 2.0*gl[3][2]*b[2]*b[1];
       b_norm = sqrt(b_norm);
+      Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+            + 2.0*gl[3][2]*u[2]*u[1];
+      u0 = sqrt(u0 + massive)/alpha; 
+      u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+      u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];   
+      u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];   
+      Real u_perp = adm[0][0]*SQR(u_aux[0]) + adm[1][1]*SQR(u_aux[1]) + adm[2][2]*SQR(u_aux[2])
+            + 2.0*adm[0][1]*u_aux[0]*u_aux[1] + 2.0*adm[0][2]*u_aux[0]*u_aux[2]
+            + 2.0*adm[2][1]*u_aux[2]*u_aux[1];
+      u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
       Real r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
-      while ( r_larmor > max_en || r_larmor < min_en ){
-        u[0] *= this_en/r_larmor;
-        u[1] *= this_en/r_larmor;
-        u[2] *= this_en/r_larmor;
-        u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-              + 2.0*gl[3][2]*u[2]*u[1];
+      Real fact = (r_larmor > this_en) ? 1.0/1.5 : 1.5;
+      Real ggll = (r_larmor > this_en) ? 1.0 : -1.0;
+      while (ggll*r_larmor > ggll*this_en) {
+        u_aux[0] *= fact;
+        u_aux[1] *= fact;
+        u_aux[2] *= fact;
+        u_perp = adm[0][0]*SQR(u_aux[0]) + adm[1][1]*SQR(u_aux[1]) + adm[2][2]*SQR(u_aux[2])
+            + 2.0*adm[0][1]*u_aux[0]*u_aux[1] + 2.0*adm[0][2]*u_aux[0]*u_aux[2]
+            + 2.0*adm[2][1]*u_aux[2]*u_aux[1];
         u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
         r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
       }
-      u_perp = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-            + 2.0*gl[3][2]*u[2]*u[1];
-      u_perp = sqrt(u_perp + massive)/alpha; 
-      u_aux[0] = u[0] + gu[0][1]*u_perp; 	
-      u_aux[1] = u[1] + gu[0][2]*u_perp; 	
-      u_aux[2] = u[2] + gu[0][3]*u_perp; 	
     } else {
       Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-          + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-          + 2.0*gl[3][2]*u[2]*u[1];
-      u0 = sqrt(u0 + massive)/alpha;
+            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+            + 2.0*gl[3][2]*u[2]*u[1];
+      u0 = sqrt(u0 + massive)/alpha; 
       while ( u0 > max_en || u0 < min_en ){
         if (u0 > max_en) {
           u[0] /= 1.5;
@@ -1836,11 +1840,11 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
         u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
               + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
               + 2.0*gl[3][2]*u[2]*u[1];
-        u0 = sqrt(u0 + massive)/alpha;
+        u0 = sqrt(u0 + massive)/alpha; 
       }
-      u_aux[0] = u[0] + gu[0][1]*u0; 	
-      u_aux[1] = u[1] + gu[0][2]*u0; 	
-      u_aux[2] = u[2] + gu[0][3]*u0; 	
+      u_aux[0] = u[0] + gu[0][1]*u0;   
+      u_aux[1] = u[1] + gu[0][2]*u0;   
+      u_aux[2] = u[2] + gu[0][3]*u0;   
     }
     u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
     u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
@@ -2217,8 +2221,6 @@ void TorusFluxes(HistoryData *pdata, Mesh *pm) {
       grids[g]->InterpolateToSphere(3, bcc0_);
       Kokkos::realloc(interpolated_bcc, grids[g]->nangles, 3);
       Kokkos::deep_copy(interpolated_bcc, grids[g]->interp_vals);
-      interpolated_bcc.template modify<DevExeSpace>();
-      interpolated_bcc.template sync<HostMemSpace>();
     }
     grids[g]->InterpolateToSphere(nvars, w0_);
 
