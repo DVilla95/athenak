@@ -17,6 +17,7 @@
 #include "bvals/bvals.hpp"
 #include "particles.hpp"
 #include "hamiltonian_gr.hpp"
+#include "coordinates/cartesian_ks.hpp"
 
 namespace particles {
 //----------------------------------------------------------------------------------------
@@ -214,10 +215,13 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     min_dt2 = std::fmin(( mbsize.d_view(m).dx2*nghst/v[1] ), min_dt2);
     min_dt3 = std::fmin(( mbsize.d_view(m).dx3*nghst/v[2] ), min_dt3);
 
+    Real glower[4][4], gupper[4][4]; // Metric 
+    ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
     Real omdt = 0.0;
-    Real omega = 0.0;
-    for (int i = 0; i<3; ++i)
-      omega += SQR(B[i]);
+    Real omega = glower[1][1]*SQR(B[0]) + glower[2][2]*SQR(B[1]) + glower[3][3]*SQR(B[2])
+            + 2.0*glower[1][2]*B[0]*B[1] + 2.0*glower[1][3]*B[0]*B[2]
+            + 2.0*glower[2][3]*B[1]*B[2];
+    omega = sqrt( omega );
     omega *= q_over_m;
     min_dt1 = std::fmin(min_dt1, std::fabs(0.25/omega));
 
