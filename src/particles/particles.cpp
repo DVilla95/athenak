@@ -217,13 +217,12 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 
     Real glower[4][4], gupper[4][4]; // Metric 
     ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
-    Real omdt = 0.0;
     Real omega = glower[1][1]*SQR(B[0]) + glower[2][2]*SQR(B[1]) + glower[3][3]*SQR(B[2])
             + 2.0*glower[1][2]*B[0]*B[1] + 2.0*glower[1][3]*B[0]*B[2]
             + 2.0*glower[2][3]*B[1]*B[2];
     omega = sqrt( omega );
     omega *= q_over_m;
-    min_dt1 = std::fmin(min_dt1, std::fabs(0.25/omega));
+    min_dt1 = std::fmin(min_dt1, std::fabs(0.5/omega));
 
   }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
   dtnew = dt1;
