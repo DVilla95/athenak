@@ -163,7 +163,7 @@ void Particles::CreateParticleTags(ParameterInput *pin) {
 }
 
 //----------------------------------------------------------------------------------------
-// ComputeNewdt()
+// NewTimeStep()
 // Find new dt imposed by particle velocities
 TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 	auto &pr = prtcl_rdata;
@@ -185,7 +185,7 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
   Real dt2 = std::numeric_limits<float>::max();
   Real dt3 = std::numeric_limits<float>::max();
 
-	Kokkos::parallel_reduce("part_newdt",Kokkos::RangePolicy<>(DevExeSpace(),0,(nprtcl_thispack-1)),
+	Kokkos::parallel_reduce("part_newdt",Kokkos::RangePolicy<>(DevExeSpace(),0, nprtcl_thispack),
 		KOKKOS_LAMBDA(const int &p, Real &min_dt1, Real &min_dt2, Real &min_dt3) {
 		const Real x[3] = {pr(IPX,p), pr(IPY,p), pr(IPZ,p)};
 		Real u[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
