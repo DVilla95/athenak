@@ -1814,8 +1814,8 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
       v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
             + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
             + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-      Real r_larmor = v_norm*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
-      Real fact = (r_larmor > this_en) ? 1.0/1.5 : 1.5;
+      Real r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
+      Real fact = (r_larmor > this_en) ? 0.95 : 1.05;
       Real ggll = (r_larmor > this_en) ? 1.0 : -1.0;
       while (ggll*r_larmor > ggll*this_en) {
         u[0] *= fact;
@@ -1839,28 +1839,26 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
         v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
               + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
               + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-        r_larmor = v_norm*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
+        r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
       }
       for (int ii = 0; ii<3; ++ii)
-        u[ii] *= u0; // 3-velocity to 4-velocity
+        u_aux[ii] = u[ii];
     } else {
-      Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-            + 2.0*gl[3][2]*u[2]*u[1];
+      for (int ii = 0; ii<3; ++ii)
+        u_aux[ii] = u[ii];
+      Real u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
       u0 = sqrt(u0 + massive)/alpha; 
-      while ( u0 > max_en || u0 < min_en ){
-        if (u0 > max_en) {
-          u[0] /= 1.5;
-          u[1] /= 1.5;
-          u[2] /= 1.5;
-        } else if (u0 < min_en){
-          u[0] *= 1.5;
-          u[1] *= 1.5;
-          u[2] *= 1.5;
-        }
-        u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-              + 2.0*gl[3][2]*u[2]*u[1];
+      Real fact = (u0 > this_en) ? 0.95 : 1.05;
+      Real ggll = (u0 > this_en) ? 1.0 : -1.0;
+      while (ggll*u0 > ggll*this_en) {
+        u_aux[0] *= fact;
+        u_aux[1] *= fact;
+        u_aux[2] *= fact;
+        u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
         u0 = sqrt(u0 + massive)/alpha; 
       }
     }
