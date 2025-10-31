@@ -190,17 +190,18 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 		const Real x[3] = {pr(IPX,p), pr(IPY,p), pr(IPZ,p)};
 		Real u[3] = {pr(IPVX,p), pr(IPVY,p), pr(IPVZ,p)};
     const int m = pi(PGID,p) - gids;
-    Real rhs_v[3], E[3], B[3];
-    GRRHSVelocity(x, u, is_minkowski, spin, rhs_v);
-    int ip = (x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
-    int jp = (x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
-    int kp = (x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
+    // Real rhs_v[3];
+    Real E[3], B[3];
+    // GRRHSVelocity(x, u, is_minkowski, spin, rhs_v);
+    // int ip = (x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
+    // int jp = (x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
+    // int kp = (x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
     bool out_of_bounds = false;
     InterpolateFields( x, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
-    GRLorentz_Terms(x, u, E, B, is_minkowski, spin, q_over_m, rhs_v);
-    u[0] += dt*(rhs_v[0]) ;
-    u[1] += dt*(rhs_v[1]) ;
-    u[2] += dt*(rhs_v[2]) ;
+    // GRLorentz_Terms(x, u, E, B, is_minkowski, spin, q_over_m, rhs_v);
+    // u[0] += dt*(rhs_v[0]) ;
+    // u[1] += dt*(rhs_v[1]) ;
+    // u[2] += dt*(rhs_v[2]) ;
 
     Real v[3];
     GRRHSPosition(x, u, is_minkowski, spin, v);
@@ -215,12 +216,21 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     min_dt2 = std::fmin(( mbsize.d_view(m).dx2*nghst/v[1] ), min_dt2);
     min_dt3 = std::fmin(( mbsize.d_view(m).dx3*nghst/v[2] ), min_dt3);
 
-    Real glower[4][4], gupper[4][4]; // Metric 
+    Real glower[4][4], gupper[4][4], ADM[3][3]; // Metric 
     ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
+
+    GetUpperAdmMetric( gupper, ADM );
+    Real alpha = sqrt(-1.0/gupper[0][0]);
+    Real u0 = ADM[0][0]*SQR(u[0]) + ADM[1][1]*SQR(u[1]) + ADM[2][2]*SQR(u[2])
+          + 2.0*ADM[0][1]*u[0]*u[1] + 2.0*ADM[0][2]*u[0]*u[2]
+          + 2.0*ADM[2][1]*u[2]*u[1];
+    u0 = sqrt(u0 + 1.0)/alpha; 
+
     Real omega = glower[1][1]*SQR(B[0]) + glower[2][2]*SQR(B[1]) + glower[3][3]*SQR(B[2])
             + 2.0*glower[1][2]*B[0]*B[1] + 2.0*glower[1][3]*B[0]*B[2]
             + 2.0*glower[2][3]*B[1]*B[2];
     omega = sqrt( omega );
+    omega /= u0;
     omega *= q_over_m;
     min_dt1 = std::fmin(min_dt1, std::fabs(0.5/omega));
 

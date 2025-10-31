@@ -1788,40 +1788,61 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
                        bool is_mnkwsk, Real bh_a, bool set_radius) {
     // u is contravariant in normal frame
     Real u_aux[3];
-    Real gu[4][4], gl[4][4], adm[3][3];
+    Real gu[4][4], gl[4][4];
     ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
-    GetUpperAdmMetric( gu, adm );
     Real alpha = sqrt(-1.0/gu[0][0]);
-    // Convert velocity to coordinate frame
     if (set_radius) {
       Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
             + 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
             + 2.0*gl[3][2]*b[2]*b[1];
-      b_norm = sqrt(b_norm);
       Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
             + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
             + 2.0*gl[3][2]*u[2]*u[1];
-      u0 = sqrt(u0 + massive)/alpha; 
+      u0 = sqrt(u0 + massive); // Lorentz factor in FIDO/normal frame
+      // Lower indeces on velocity for scalar product with magnetic field
       u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-      u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];   
-      u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];   
-      Real u_perp = adm[0][0]*SQR(u_aux[0]) + adm[1][1]*SQR(u_aux[1]) + adm[2][2]*SQR(u_aux[2])
-            + 2.0*adm[0][1]*u_aux[0]*u_aux[1] + 2.0*adm[0][2]*u_aux[0]*u_aux[2]
-            + 2.0*adm[2][1]*u_aux[2]*u_aux[1];
-      u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-      Real r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
+      u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+      u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+      for (int ii = 0; ii<3; ++ii)
+        u_aux[ii] /= u0; // Get three-velocity 
+      Real v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
+      for (int ii = 0; ii<3; ++ii) {
+        u_aux[ii] = u[ii]/u0 - v_norm*b[ii]; // Get perpendicular velocity
+        u_aux[ii] /= b_norm; // Normalize by magnetic field strength
+      }
+      
+      v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+      Real r_larmor = v_norm*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
       Real fact = (r_larmor > this_en) ? 1.0/1.5 : 1.5;
       Real ggll = (r_larmor > this_en) ? 1.0 : -1.0;
       while (ggll*r_larmor > ggll*this_en) {
-        u_aux[0] *= fact;
-        u_aux[1] *= fact;
-        u_aux[2] *= fact;
-        u_perp = adm[0][0]*SQR(u_aux[0]) + adm[1][1]*SQR(u_aux[1]) + adm[2][2]*SQR(u_aux[2])
-            + 2.0*adm[0][1]*u_aux[0]*u_aux[1] + 2.0*adm[0][2]*u_aux[0]*u_aux[2]
-            + 2.0*adm[2][1]*u_aux[2]*u_aux[1];
-        u_perp = sqrt(0.666*u_perp); // Assume isotropy, then 2/3 of the norm of u is perpendicular velocity
-        r_larmor = u_perp/q_o_m/b_norm; // Larmor radius computed with perpendicular 4-velocity
+        u[0] *= fact;
+        u[1] *= fact;
+        u[2] *= fact;
+        u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+              + 2.0*gl[3][2]*u[2]*u[1];
+        u0 = sqrt(u0 + massive);
+        u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+        u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+        u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+        for (int ii = 0; ii<3; ++ii)
+          u_aux[ii] /= u0;
+        v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
+        for (int ii = 0; ii<3; ++ii) {
+          u_aux[ii] = u[ii]/u0 - v_norm*b[ii];
+          u_aux[ii] /= b_norm;
+        }
+        
+        v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+        r_larmor = v_norm*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
       }
+      for (int ii = 0; ii<3; ++ii)
+        u[ii] *= u0; // 3-velocity to 4-velocity
     } else {
       Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
             + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
@@ -1842,10 +1863,10 @@ static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
               + 2.0*gl[3][2]*u[2]*u[1];
         u0 = sqrt(u0 + massive)/alpha; 
       }
-      u_aux[0] = u[0] + gu[0][1]*u0;   
-      u_aux[1] = u[1] + gu[0][2]*u0;   
-      u_aux[2] = u[2] + gu[0][3]*u0;   
     }
+    // Velocity was contravariant in FIDO/normal frame
+    // Lower indeces on velocity.
+    // Covariant velocity in FIDO and coordinate frame match
     u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
     u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
     u[2] = gl[3][1]*u_aux[0] + gl[3][2]*u_aux[1] + gl[3][3]*u_aux[2];
