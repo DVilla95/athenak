@@ -224,7 +224,7 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     Real u0 = ADM[0][0]*SQR(u[0]) + ADM[1][1]*SQR(u[1]) + ADM[2][2]*SQR(u[2])
           + 2.0*ADM[0][1]*u[0]*u[1] + 2.0*ADM[0][2]*u[0]*u[2]
           + 2.0*ADM[2][1]*u[2]*u[1];
-    u0 = sqrt(u0 + 1.0); 
+    u0 = sqrt(u0 + 1.0)/alpha; 
 
     Real omega = glower[1][1]*SQR(B[0]) + glower[2][2]*SQR(B[1]) + glower[3][3]*SQR(B[2])
             + 2.0*glower[1][2]*B[0]*B[1] + 2.0*glower[1][3]*B[0]*B[2]
