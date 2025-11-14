@@ -132,6 +132,35 @@ KOKKOS_INLINE_FUNCTION
 static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
                        Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
                        bool is_mnkwsk, Real bh_a, bool set_radius);
+
+// refine the whole domain at restart
+void RefineRestart(MeshBlockPack *pmbp) {
+  Mesh *pmesh       = pmbp->pmesh;
+  int nmb           = pmbp->nmb_thispack;
+  int mbs           = pmesh->gids_eachrank[global_variable::my_rank];
+  auto &refine_flag = pmesh->pmr->refine_flag;
+  auto &indcs       = pmesh->mb_indcs;
+  int &is = indcs.is, nx1 = indcs.nx1;
+  int &js = indcs.js, nx2 = indcs.nx2;
+  int &ks = indcs.ks, nx3 = indcs.nx3;
+  const int nkji = nx3 * nx2 * nx1;
+  const int nji  = nx2 * nx1;
+
+  par_for_outer(
+  "MHDRefineRestart", DevExeSpace(), 0, 0, 0, (nmb - 1),
+  KOKKOS_LAMBDA(TeamMember_t tmember, const int m) {
+  refine_flag.d_view(m + mbs) = 1;
+  // sync host and device
+  // refine_flag.template modify<DevExeSpace>();
+  // refine_flag.template sync<HostMemSpace>();
+  });
+  // Refinement can only be done once at restart
+  auto &ref_int = pmesh->pmr->refinement_interval;
+  auto &ncyc_check = pmesh->pmr->ncyc_check_amr;
+  ref_int = static_cast<int>(1e+9);
+  ncyc_check = static_cast<int>(1e+9);
+}
+
 } // namespace
 
 // Prototypes for user-defined BCs and history functions
@@ -160,6 +189,10 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // User boundary function
   user_bcs_func = NoInflowTorus;
   //user_hist_func = &TorusHistory;
+  bool rfn_rst = pin->GetOrAddBoolean("problem", "refine_at_restart", false);
+  if (rfn_rst) {
+    user_ref_func = RefineRestart;
+  }
 
   // capture variables for kernel
   auto &indcs = pmy_mesh_->mb_indcs;
