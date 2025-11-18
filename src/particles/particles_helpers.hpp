@@ -85,34 +85,65 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	Real &x1max = mbsize.d_view(m).x1max;
 	Real &x2max = mbsize.d_view(m).x2max;
 	Real &x3max = mbsize.d_view(m).x3max;
-	Real x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	Real x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	Real x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
 	Real Dx = (x1max - x1min)/indcs.nx1;
 	Real Dy = (x2max - x2min)/indcs.nx2;
 	Real Dz = (x3max - x3min)/indcs.nx3;
+
+  // x component of E centered along x edge
+	Real x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
+	Real x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+	Real x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
 	// Interpolate Electric Field at new particle location x1, x2, x3
+  Real weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
+	E[1] = e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
+	E[2] = e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
 
-	E[0] = e0_.x1e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
-	E[0] += e0_.x1e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
-	E[1] = e0_.x2e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
-	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
-	E[1] += e0_.x2e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
-	E[2] = e0_.x3e(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
-	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
-	E[2] += e0_.x3e(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
-
+  // x component of B centered along yz face
+	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
+	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
+  x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
 	// Interpolate Magnetic Field at new particle location x1, x2, x3
-	B[0] = b0_.x1f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
-	B[0] += b0_.x1f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
-	B[1] = b0_.x2f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
-	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
-	B[1] += b0_.x2f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
-	B[2] = b0_.x3f(m, kp, jp, ip) + (prtcl_x[0] - x1v)*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
-	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[1] - x2v)*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
-	B[2] += b0_.x3f(m, kp, jp, ip) + (prtcl_x[2] - x3v)*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
+  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
+	B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
+	B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
+
+  // y component of E centered along y edge
+	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
+	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
+	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
+	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
+	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
+
+  // y component of B centered along xz face
+	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
+	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
+	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
+	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
+
+  // z component of E centered along z edge
+	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
+	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
+	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
+	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
+
+  // z component of B centered along yz face
+	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
+	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
+	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
+	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
+	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
   for (int i = 0; i<3; ++i) {
     E[i] /= 3.0;
     B[i] /= 3.0;
