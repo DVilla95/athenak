@@ -379,7 +379,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
         Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
 
-        par_for("part_init", DevExeSpace(),0,(npart-1),
+        par_for("part_init", DevExeSpace(),0,npart,
             KOKKOS_LAMBDA(const int p){
               bool found_mb = false;
               auto prtcl_gen = prtcl_rand.get_state();
