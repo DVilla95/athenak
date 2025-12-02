@@ -374,7 +374,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         npart = 0;
         Kokkos::realloc(pr, pmbp->ppart->nrdata, 0);
         Kokkos::realloc(pi, pmbp->ppart->nidata, 0);
-        std::cout << "None of the MBs on this rank satisfy the injection criterium. Deleted particles."<< std::endl;
+        std::cout << "None of the MBs on rank " << global_variable::my_rank << " satisfy the injection criterium. Deleted particles."<< std::endl;
       } else {
 
         Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
@@ -387,7 +387,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                 int m = static_cast<int>(prtcl_gen.frand()*(gide-gids+1.0));
                 // First check that the meshblock is within the disk, and then outside the horizon
                 while ( !mb_for_injection[m] ) {
-                  m = static_cast<int>(prtcl_gen.frand()*(gide-gids+1.0));
+                  m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
                 }
                 Real &x1min = size.d_view(m).x1min;
                 Real &x1max = size.d_view(m).x1max;
