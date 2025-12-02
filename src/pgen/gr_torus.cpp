@@ -384,7 +384,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
               bool found_mb = false;
               auto prtcl_gen = prtcl_rand.get_state();
               while(!found_mb){
-                int m = static_cast<int>(prtcl_gen.frand()*(gide-gids+1.0));
+                int m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
                 // First check that the meshblock is within the disk, and then outside the horizon
                 while ( !mb_for_injection[m] ) {
                   m = static_cast<int>(prtcl_gen.frand()*(gide-gids));

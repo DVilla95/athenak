@@ -101,14 +101,16 @@ gamma_max   = 20.0       # Enable ceiling on Lorentz factor
 
 <particles>
 ppc    = 0.01
-pusher = full_gr
-iter_tolerance = 1.0E-10
-max_iter = 15
+pusher = imr
+iter_tolerance = 1.0E-16
+max_iter = 50
 particle_type = cosmic_ray
 charge_over_mass = 1.0
 inject = true
-init_type = flow_align
+init_type = shell
 rho_condition = 1.0E+4 # Factor on density to determine whether a given cell should host particles
+r_init_min = 2.5
+r_init_max = 5.0
 
 <problem>
 fm_torus   = true  # Fishbone & Moncrief
