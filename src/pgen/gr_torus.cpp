@@ -379,7 +379,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
         Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
 
-        par_for("part_init", DevExeSpace(),0,npart,
+        par_for("part_init", DevExeSpace(),0,npart-1,
             KOKKOS_LAMBDA(const int p){
               bool found_mb = false;
               auto prtcl_gen = prtcl_rand.get_state();
@@ -509,7 +509,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                     pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
                     pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
                     pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-                  } else if (prtcl_init_rad){
+                  } else if (prtcl_init_rad) {
                     // Find cell within spherical shell
                     // Would probably be more optimal to start from radius and get xyz 
                     int try_this_mb = 0;
@@ -571,6 +571,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     dtnew_ = std::min(dtnew_, size.h_view(0).dx3);
     dtnew_ *= pin->GetOrAddReal("time", "cfl_number", 0.8);
   }
+  pmbp->pmesh->UpdatePrtclInfo();
 
   // return if restart
   if (restart) return;

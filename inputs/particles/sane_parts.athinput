@@ -128,8 +128,8 @@ rho_max   = 1.0       # if > 0, rescale rho to have this peak; rescale pres by s
 l         = 0.0       # const ang. mom. per unit mass u^t u_phi; only used if r_peak < 0
 pert_amp  = 2.0e-2    # perturbation amplitude
 user_hist = true      # enroll user-defined history function
-prtcl_energy_min = 0.995
-prtcl_energy_max = 5.5
+prtcl_energy_min = 2.0
+prtcl_energy_max = 10.5
 
 <output1>
 file_type  = hst        # History output
