@@ -39,7 +39,7 @@ void Particles::BorisStepGR( const Real dt, const bool only_v ){
   auto &mbsize = pmy_pack->pmb->mb_size;
 
   // First half-step in space
-  par_for("part_boris",DevExeSpace(),0,npart,
+  par_for("part_boris",DevExeSpace(),0,npart-1,
   KOKKOS_LAMBDA(const int p) {
       
     // Co-variant 4-velocity in the coordinate frame
