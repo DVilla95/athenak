@@ -570,8 +570,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     dtnew_ = std::min(size.h_view(0).dx1, size.h_view(0).dx2);
     dtnew_ = std::min(dtnew_, size.h_view(0).dx3);
     dtnew_ *= pin->GetOrAddReal("time", "cfl_number", 0.8);
+    pmbp->pmesh->UpdatePrtclInfo();
   }
-  pmbp->pmesh->UpdatePrtclInfo();
 
   // return if restart
   if (restart) return;
