@@ -486,7 +486,6 @@ void Particles::GRLorentzIterations( const Real dt ){
     if (invert_mat_fail) {
       x_step = (mbsize.d_view(m).dx1 + mbsize.d_view(m).dx2 + mbsize.d_view(m).dx3)/(6.0*n_iter) ;
       v_step *= 25.0;
-      --n_iter;
       continue;
     }
 
@@ -501,8 +500,7 @@ void Particles::GRLorentzIterations( const Real dt ){
     resnorm = 0.0;
     for (int i = 0; i<ndim; ++i) 
       resnorm += SQR(res[i]);
-    if (resnorm > 5.0*resold || out_of_bounds) {
-      --n_iter;
+    if (resnorm > resold || out_of_bounds) {
       damp_f *= 0.5;
       for (int oj = 0; oj<3; ++oj) {
         x_eval[oj] = x_init[oj] + RHS_eval_x[oj]*dt;
