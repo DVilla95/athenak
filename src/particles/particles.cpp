@@ -234,10 +234,11 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     omega *= q_over_m;
     min_dt1 = std::fmin(min_dt1, std::fabs(0.5/omega));
 
-  }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2),Kokkos::Min<Real>(dt3));
+  }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2), Kokkos::Min<Real>(dt3));
   dtnew = dt1;
   if (pmy_pack->pmesh->multi_d) { dtnew = std::min(dtnew, dt2); }
   if (pmy_pack->pmesh->three_d) { dtnew = std::min(dtnew, dt3); }
+  // std::cout << "Max iter: " << max_iteration_number << " avg_iter: " << average_iteration_number << std::endl;
 
   return TaskStatus::complete;
 }

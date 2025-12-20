@@ -350,13 +350,14 @@ void Particles::GRLorentzIterations( const Real dt ){
   auto &indcs = pmy_pack->pmesh->mb_indcs;
   auto &mbsize = pmy_pack->pmb->mb_size;
 
-  const Real base_x_step = 1.0E-8;
-  const Real base_v_step = 1.0E-8;
+  const Real base_x_step = 1.0E-5;
+  const Real base_v_step = 1.0E-5;
   Real avg_iter = 0.0;
+  int tot_max_iter = 0.0;
   int ndim = 6;
 
   Kokkos::parallel_reduce("part_grlorentz",Kokkos::RangePolicy<>(DevExeSpace(),0,nprtcl_thispack),
-    KOKKOS_LAMBDA(const int p, Real &aux_n_iter) {
+    KOKKOS_LAMBDA(const int p, Real &aux_n_iter, int &max_n_iter) {
 
     // Iterate per particle such that those that converge quicker don't go through as many iterations
     // Initialize iteration variables
@@ -527,8 +528,10 @@ void Particles::GRLorentzIterations( const Real dt ){
     if (multi_d) { pr(IPY,p) = x_eval[1]; }
     if (three_d) { pr(IPZ,p) = x_eval[2]; }
     aux_n_iter += n_iter;
-  }, Kokkos::Sum<Real>(avg_iter));
-  average_iteration_number += avg_iter / nprtcl_thispack;
+    max_n_iter = n_iter;
+  }, Kokkos::Sum<Real>(avg_iter), Kokkos::Max<int>(tot_max_iter));
+  average_iteration_number = avg_iter / nprtcl_thispack;
+  max_iteration_number = tot_max_iter;
   return;
 }
 

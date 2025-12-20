@@ -68,6 +68,7 @@ class Particles {
   Real dtnew;
   Real iter_tolerance;
   Real average_iteration_number;
+  int max_iteration_number;
   int max_iter;
   Real min_radius; // This radius is used to destroy particles before they may reach the horizon
   Real charge_over_mass; //Store charge over mass ratio
