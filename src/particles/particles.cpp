@@ -212,6 +212,7 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 
     // If a particle is almost at the boundary of a meshblock
     // you have nghost*dx space before the InterpolateFields function goes into segmentation fault
+    min_dt1 = 1.0; min_dt2 = 1.0; min_dt3 = 1.0;
     min_dt1 = std::fmin(( mbsize.d_view(m).dx1*nghst/v[0] ), min_dt1);
     min_dt2 = std::fmin(( mbsize.d_view(m).dx2*nghst/v[1] ), min_dt2);
     min_dt3 = std::fmin(( mbsize.d_view(m).dx3*nghst/v[2] ), min_dt3);
