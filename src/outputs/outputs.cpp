@@ -287,6 +287,12 @@ Outputs::Outputs(ParameterInput *pin, Mesh *pm) {
         pnode = new RestartOutput(pin,pm,opar);
         pout_list.push_back(pnode);
         num_rst++;
+        auto ppart = pm->pmb_pack->ppart;
+        if (ppart != nullptr) {
+          BaseTypeOutput *pnodeaux;
+          pnodeaux = new ParticleRstOutput(pin,pm,opar);
+          pout_list.push_back(pnodeaux);
+        }
       } else {
         std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
             << std::endl << "Unrecognized file format = '" << opar.file_type

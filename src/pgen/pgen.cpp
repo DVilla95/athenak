@@ -24,6 +24,7 @@
 #include "z4c/compact_object_tracker.hpp"
 #include "z4c/z4c.hpp"
 #include "radiation/radiation.hpp"
+#include "particles/particles.hpp"
 #include "srcterms/turb_driver.hpp"
 #include "pgen.hpp"
 
@@ -129,9 +130,8 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm) :
 // initializes all the dependent variables (u0,b0,etc) stored in each Physics class. It
 // also calls ProblemGenerator::SetProblemData() function to set any user-defined BCs,
 // and any data necessary for restart runs to continue correctly.
-
 ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resfile,
-                                   bool single_file_per_rank) :
+                                   bool single_file_per_rank, std::string restart_file) :
     user_bcs(false),
     user_srcs(false),
     user_hist(false),
@@ -655,6 +655,84 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
                       Kokkos::ALL, Kokkos::ALL, Kokkos::ALL), ccin);
     offset_myrank += nout1*nout2*nout3*nadm*sizeof(Real);   // adm u_adm
     myoffset = offset_myrank;
+  }
+
+  // Deal with particles having separate restart file
+  particles::Particles *ppart=pm->pmb_pack->ppart;
+  if (ppart != nullptr) {
+    size_t last_dot = restart_file.rfind('.');
+    std::string base_name = restart_file.substr(0, last_dot);
+    std::string prtcl_restart_file = base_name + ".part.rst";
+    std::ifstream file_check(prtcl_restart_file);
+    if (!file_check.good()) {
+        std::cout << "No particle restart file. This assumes that particles will be injected." << std::endl;
+    } else {
+      std::cout << "Found particle restart file: " << prtcl_restart_file << std::endl;
+      IOWrapper prtclrstfile;
+      prtclrstfile.Open(prtcl_restart_file.c_str(),IOWrapper::FileMode::read,single_file_per_rank);
+      std::stringstream header_msg;
+
+      //Parse header to find stored number of particles
+      std::stringstream par;
+      constexpr int kBufSize = 4096;
+      char buf[kBufSize];
+      IOWrapperSizeT ret;
+      ret = prtclrstfile.Read_bytes(buf, sizeof(char), kBufSize, single_file_per_rank);
+      par.write(buf, ret); // add the buffer into the stream
+      std::string sbuf = par.str(); // create string for search
+      IOWrapperSizeT loc = sbuf.find("<head_end>", 0); // search from the top of the stream
+      std::string line;
+      std::getline(par, line);
+      std::getline(par, line);
+      std::size_t intrst_strt = line.rfind("=") + 1;
+      int prtcls_from_rst = atoi( line.substr( intrst_strt, line.length()-intrst_strt ).c_str() );
+
+      // Loop through particles and save particles that belong to rank
+      headeroffset = loc + 11;
+      prtclrstfile.Seek(headeroffset, single_file_per_rank);
+      std::vector<std::vector<Real>> tmp_real = std::vector<std::vector<Real>>();
+      std::vector<std::vector<int>> tmp_int = std::vector<std::vector<int>>();
+      IOWrapperSizeT prtcl_vars = 8;
+      IOWrapperSizeT prtcl_offset = 8*sizeof(Real);
+      int pcount = 0;
+      int gids = pm->pmb_pack->gids;
+      int gide = pm->pmb_pack->gide;
+      for (int ip=0; ip<prtcls_from_rst; ++ip) {
+        Real this_prtcl[8] = {0.0};
+        prtclrstfile.Read_Reals_at(this_prtcl, prtcl_vars, headeroffset,
+                                      single_file_per_rank);
+        if (gids <= this_prtcl[6] < gide) {
+          tmp_real.push_back( std::vector<Real>() );
+          for (int i=0; i<6; ++i)
+            tmp_real[pcount].push_back( this_prtcl[i] );
+          tmp_int.push_back( std::vector<int>() );
+          for (int i=0; i<2; ++i)
+            tmp_int[pcount].push_back( static_cast<int>(this_prtcl[i+6]) );
+          //for (int j=0; j<6; ++j)
+          //  std::cout << tmp_real[pcount][j] << " ";
+          //for (int j=0; j<2; ++j)
+          //  std::cout << tmp_int[pcount][j] << " ";
+          //std::cout << std::endl;
+          ++pcount;
+        }
+        headeroffset += prtcl_offset; 
+      }
+      ppart->nprtcl_thispack = pcount;  
+      auto &pr = ppart->prtcl_rdata;
+      Kokkos::realloc(pr, ppart->nrdata, pcount);
+      auto &pi = ppart->prtcl_idata;
+      Kokkos::realloc(pi, ppart->nidata, pcount);
+      for (int ip=0; ip<pcount; ++ip) {
+        pr(IPX,ip) = tmp_real[ip][0];
+        pr(IPY,ip) = tmp_real[ip][1];
+        pr(IPZ,ip) = tmp_real[ip][2];
+        pr(IPVX,ip) = tmp_real[ip][3];
+        pr(IPVY,ip) = tmp_real[ip][4];
+        pr(IPVZ,ip) = tmp_real[ip][5];
+        pi(PGID,ip) = tmp_int[ip][0];
+        pi(PTAG,ip) = tmp_int[ip][1];
+      }
+    }
   }
 
   // call problem generator again to re-initialize data, fn ptrs, as needed
