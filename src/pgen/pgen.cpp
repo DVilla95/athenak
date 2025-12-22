@@ -701,7 +701,7 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
         Real this_prtcl[8] = {0.0};
         prtclrstfile.Read_Reals_at(this_prtcl, prtcl_vars, headeroffset,
                                       single_file_per_rank);
-        if (gids <= this_prtcl[6] < gide) {
+        if ( (gids <= this_prtcl[6]) && (this_prtcl[6] <= gide) ) {
           tmp_real.push_back( std::vector<Real>() );
           for (int i=0; i<6; ++i)
             tmp_real[pcount].push_back( this_prtcl[i] );
@@ -732,6 +732,7 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
         pi(PGID,ip) = tmp_int[ip][0];
         pi(PTAG,ip) = tmp_int[ip][1];
       }
+    prtclrstfile.Close();
     }
   }
 

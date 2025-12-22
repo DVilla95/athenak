@@ -563,13 +563,6 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         std::cout << "Injected " << npart << " particles." << std::endl;
       }
     }
-    // set timestep (which will remain constant for entire run
-    // Assumes uniform mesh (no SMR or AMR)
-    // Assumes velocities normalized to one, so dt=min(dx)
-    Real &dtnew_ = pmbp->ppart->dtnew;
-    dtnew_ = std::min(size.h_view(0).dx1, size.h_view(0).dx2);
-    dtnew_ = std::min(dtnew_, size.h_view(0).dx3);
-    dtnew_ *= pin->GetOrAddReal("time", "cfl_number", 0.8);
     pmbp->pmesh->UpdatePrtclInfo();
   }
 
