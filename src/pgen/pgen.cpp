@@ -665,9 +665,11 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
     std::string prtcl_restart_file = base_name + ".part.rst";
     std::ifstream file_check(prtcl_restart_file);
     if (!file_check.good()) {
+      if (global_variable::my_rank == 0)
         std::cout << "No particle restart file. This assumes that particles will be injected." << std::endl;
     } else {
-      std::cout << "Found particle restart file: " << prtcl_restart_file << std::endl;
+      if (global_variable::my_rank == 0)
+        std::cout << "Found particle restart file: " << prtcl_restart_file << std::endl;
       IOWrapper prtclrstfile;
       prtclrstfile.Open(prtcl_restart_file.c_str(),IOWrapper::FileMode::read,single_file_per_rank);
       std::stringstream header_msg;
@@ -697,10 +699,15 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
       int pcount = 0;
       int gids = pm->pmb_pack->gids;
       int gide = pm->pmb_pack->gide;
+      std::vector<Real> all_prtcls = std::vector<Real>();
+      all_prtcls.reserve(8*prtcls_from_rst);
+      prtclrstfile.Read_Reals_at_all(all_prtcls.data(), prtcl_vars*prtcls_from_rst, headeroffset,
+                                    single_file_per_rank);
+      prtclrstfile.Close();
+      Real this_prtcl[8] = {0.0};
       for (int ip=0; ip<prtcls_from_rst; ++ip) {
-        Real this_prtcl[8] = {0.0};
-        prtclrstfile.Read_Reals_at(this_prtcl, prtcl_vars, headeroffset,
-                                      single_file_per_rank);
+        for (int iv=0; iv<8; ++iv)
+          this_prtcl[iv] = all_prtcls[ip*8 + iv];
         if ( (gids <= this_prtcl[6]) && (this_prtcl[6] <= gide) ) {
           tmp_real.push_back( std::vector<Real>() );
           for (int i=0; i<6; ++i)
@@ -717,6 +724,7 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
         }
         headeroffset += prtcl_offset; 
       }
+      std::cout << "Rank: " << global_variable::my_rank << " got " << pcount << " from rst file." << std::endl;
       ppart->nprtcl_thispack = pcount;  
       auto &pr = ppart->prtcl_rdata;
       Kokkos::realloc(pr, ppart->nrdata, pcount);
@@ -732,7 +740,6 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
         pi(PGID,ip) = tmp_int[ip][0];
         pi(PTAG,ip) = tmp_int[ip][1];
       }
-    prtclrstfile.Close();
     }
   }
 
