@@ -95,6 +95,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	Real x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
 	// Interpolate Electric Field at new particle location x1, x2, x3
   Real weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
 	E[1] = e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
 	E[2] = e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
@@ -105,6 +106,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
   x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
 	// Interpolate Magnetic Field at new particle location x1, x2, x3
   weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
 	B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
 	B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
@@ -114,6 +116,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
 	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
 	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
 	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
@@ -123,6 +126,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
 	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
 	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
 	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
@@ -132,6 +136,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
 	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
 	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
 	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
@@ -141,6 +146,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
 	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = fabs(weight);
 	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
 	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
 	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
