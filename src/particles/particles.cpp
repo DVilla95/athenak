@@ -120,6 +120,7 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
 // destructor
 
 Particles::~Particles() {
+  delete pbval_part;
 }
 
 //----------------------------------------------------------------------------------------
