@@ -245,6 +245,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       Real min_en = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
       Real max_en = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
       std::string prtcl_init_type = pin->GetString("particles","init_type");
+      std::string prtcl_init_type_vel = pin->GetString("particles","init_type_vel");
       const Real q_over_m = pin->GetOrAddReal("particles", "charge_over_mass", 1);
       // Need these booleans on device, can't use std::string
       // .compare() returns 0 for successful comparison, which is opposite of usual boolean
@@ -252,6 +253,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       const bool prtcl_init_flow = !(prtcl_init_type.compare("flow_align"));
       const bool prtcl_init_blob = !(prtcl_init_type.compare("blob"));
       const bool prtcl_init_rad = !(prtcl_init_type.compare("shell"));
+      const bool prtcl_init_vel_rand = !(prtcl_init_type_vel.compare("random"));
       const bool is_gca = pmbp->ppart->is_gca;
       const bool set_radius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
       // Check initialization type has been set
@@ -536,7 +538,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                       b[0] = bcc_(m,IBX,kp,jp,ip);
                       b[1] = bcc_(m,IBY,kp,jp,ip);
                       b[2] = bcc_(m,IBZ,kp,jp,ip);
-                      if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) {
+                      if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 || prtcl_init_vel_rand ) {
                         u[0] = 0.1*(0.5 - prtcl_gen.frand());
                         u[1] = 0.1*(0.5 - prtcl_gen.frand());
                         u[2] = 0.1*(0.5 - prtcl_gen.frand());
