@@ -75,7 +75,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
   // Sanity check: sometimes particles can make excessively large steps during NL iterations.
   // Returning the boolean as false allows to reset the iteration variables without crashing the whole code
   if (ip < 0 || jp < 0 || kp < 0
-      || ip > (indcs.ie + indcs.ng) || jp > (indcs.je + indcs.ng) || kp > (indcs.ke + indcs.ng) ) {
+      || ip > (indcs.ie + indcs.ng - 1) || jp > (indcs.je + indcs.ng - 1) || kp > (indcs.ke + indcs.ng - 1) ) {
     out_of_bounds = true;
     return;
   }
