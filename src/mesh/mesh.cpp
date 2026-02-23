@@ -18,6 +18,7 @@
 #include "parameter_input.hpp"
 #include "mesh.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "coordinates/adm.hpp"
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "z4c/z4c.hpp"
@@ -340,6 +341,9 @@ Mesh::~Mesh() {
   delete [] lloc_eachmb;
   delete [] gids_eachrank;
   delete [] nmb_eachrank;
+  if (pmb_pack->ppart != nullptr) {
+    delete [] nprtcl_eachrank;
+  }
   delete pmb_pack;
   if (multilevel) {
     delete pmr;
