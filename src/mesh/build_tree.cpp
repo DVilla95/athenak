@@ -267,8 +267,9 @@ void Mesh::BuildTreeFromScratch(ParameterInput *pin) {
   pmb_pack->pmb->SetNeighbors(ptree, rank_eachmb);
 
   // Fix maximum number of MeshBlocks per rank with AMR
-  nmb_maxperrank = nmb_thisrank;
-  if (adaptive) {
+  // Following load_balancing without SMR/AMR, also the mesh itself might require a maximum nmb 
+  nmb_maxperrank = std::fmax(nmb_thisrank, nmb_maxperrank);
+  if (multilevel) {
     if (pin->DoesParameterExist("mesh_refinement", "max_nmb_per_rank")) {
       nmb_maxperrank = pin->GetReal("mesh_refinement", "max_nmb_per_rank");
       if (nmb_maxperrank < nmb_thisrank) {

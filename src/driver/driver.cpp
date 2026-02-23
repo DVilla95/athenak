@@ -370,6 +370,9 @@ void Driver::Initialize(Mesh *pmesh, ParameterInput *pin, Outputs *pout, bool re
     Kokkos::realloc(impl_src, nimp_stages, nmb, 8, ncells3, ncells2, ncells1);
   }
 
+  bool check_balance = true;
+  if (pmesh->multilevel) {pmesh->pmr->AdaptiveMeshRefinement(this, pin, check_balance);}
+
   return;
 }
 
@@ -442,7 +445,9 @@ void Driver::Execute(Mesh *pmesh, ParameterInput *pin, Outputs *pout) {
       }
 
       // AMR
-      if (pmesh->adaptive) {pmesh->pmr->AdaptiveMeshRefinement(this, pin);}
+      bool check_balance = false;
+      if (pmesh->ncycle%(pmesh->pmr->ncyc_check_lb) == 0) {check_balance = true;}  // not cycle to check
+      if (pmesh->multilevel) {pmesh->pmr->AdaptiveMeshRefinement(this, pin, check_balance);}
       // compute new timestep AFTER all Meshblocks refined/derefined
       pmesh->NewTimeStep(tlim);
 
@@ -478,7 +483,7 @@ void Driver::Finalize(Mesh *pmesh, ParameterInput *pin, Outputs *pout) {
   if (time_evolution != TimeEvolution::tstatic) {
 #if MPI_PARALLEL_ENABLED
     // Collect number of MeshBlocks communicated during load balancing across all ranks
-    if (pmesh->adaptive) {
+    if (pmesh->multilevel) {
       MPI_Allreduce(MPI_IN_PLACE, &(pmesh->pmr->nmb_sent_thisrank), 1, MPI_INT, MPI_SUM,
                     MPI_COMM_WORLD);
     }
@@ -645,6 +650,9 @@ void Driver::InitBoundaryValuesAndPrimitives(Mesh *pm) {
     (void) prad->ApplyPhysicalBCs(this, 0);
     (void) prad->Prolongate(this, 0);
   }
+
+  // Initialize particles. At this point no additional steps needed
+  // particles::Particles *ppart = pm->pmb_pack->ppart;
 
   return;
 }

@@ -67,10 +67,21 @@ void MarkForDestruction(int *pcounter, DualArray1D<ParticleLocationData> dlist, 
 
 TaskStatus ParticlesBoundaryValues::SetNewPrtclGID() {
   // create local references for variables in kernel
+  int npart = pmy_part->nprtcl_thispack;
+  Kokkos::realloc(sendlist, static_cast<int>(npart));
+  Kokkos::realloc(destroylist, static_cast<int>(npart));
+  if (npart == 0){
+    sendlist.template modify<DevExeSpace>();
+    sendlist.template sync<HostMemSpace>();
+    // sync destroylist device array with host
+    destroylist.template modify<DevExeSpace>();
+    destroylist.template sync<HostMemSpace>();
+    return TaskStatus::complete;
+  }
+
   auto gids = pmy_part->pmy_pack->gids;
   auto &pr = pmy_part->prtcl_rdata;
   auto &pi = pmy_part->prtcl_idata;
-  int npart = pmy_part->nprtcl_thispack;
   auto &mbsize = pmy_part->pmy_pack->pmb->mb_size;
   auto &mblev = pmy_part->pmy_pack->pmb->mb_lev;
   auto &meshsize = pmy_part->pmy_pack->pmesh->mesh_size;
@@ -90,8 +101,6 @@ TaskStatus ParticlesBoundaryValues::SetNewPrtclGID() {
   auto &pdestroyl = destroylist;
   const Real &min_rad = pmy_part->min_radius;
 
-  Kokkos::realloc(sendlist, static_cast<int>(npart));
-  Kokkos::realloc(destroylist, static_cast<int>(npart));
   par_for("part_update",DevExeSpace(),0,(npart-1), KOKKOS_LAMBDA(const int p) {
     int m = pi(PGID,p) - gids;
     int mylevel = mblev.d_view(m);
@@ -790,6 +799,20 @@ TaskStatus ParticlesBoundaryValues::ClearPrtclRecv() {
 #endif
   nrecvs=0;
   return TaskStatus::complete;
+}
+
+void Particles::UpdateGIDLB(int &prtclgid, int newrank, int myrank, int destgid, int *pcounter,
+               DualArray1D<ParticleLocationData> slist, int p) {
+  prtclgid = destgid;
+#if MPI_PARALLEL_ENABLED
+  if (newrank != myrank) {
+    int index = (*pcounter)++;
+    slist.d_view(index).prtcl_indx = p;
+    slist.d_view(index).dest_gid   = destgid;
+    slist.d_view(index).dest_rank  = newrank;
+  }
+#endif
+  return;
 }
 
 } // namespace particles

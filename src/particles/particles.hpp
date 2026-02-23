@@ -74,6 +74,7 @@ class Particles {
   Real charge_over_mass; //Store charge over mass ratio
 	bool is_gca; // Store if the system in question has only two velocity components
   Real prtcl_push_safety; // "Safety factor" to ensure time-step doesn't cause issues when iterating
+  Real prtcl_cost; // "Cost factor" for load balancing
 
   ParticlesPusher pusher;
 
@@ -86,6 +87,7 @@ class Particles {
   // functions...
   void CreateParticleTags(ParameterInput *pin);
   void AssembleTasks(std::map<std::string, std::shared_ptr<TaskList>> tl);
+  void CountPartclsPerMB(int *ppmb);
   TaskStatus Push(Driver *pdriver, int stage);
   TaskStatus NewGID(Driver *pdriver, int stage);
   TaskStatus SendCnt(Driver *pdriver, int stage);
@@ -95,6 +97,8 @@ class Particles {
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
   TaskStatus NewTimeStep(Driver *pdriver, int stage);
+  void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int mygid, int *pcounter,
+               DualArray1D<ParticleLocationData> slist, int p);
 
   void BorisStepGR( const Real dt, const bool only_v );
   void HamiltonianGeodesicsIterations( const Real dt );
