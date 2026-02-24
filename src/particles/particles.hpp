@@ -97,8 +97,8 @@ class Particles {
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
   TaskStatus NewTimeStep(Driver *pdriver, int stage);
-  void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int mygid, int *pcounter,
-               DualArray1D<ParticleLocationData> slist, int p);
+  // void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int mygid, int *pcounter,
+  //              DualArray1D<ParticleLocationData> slist, int p);
 
   void BorisStepGR( const Real dt, const bool only_v );
   void HamiltonianGeodesicsIterations( const Real dt );

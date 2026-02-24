@@ -801,18 +801,4 @@ TaskStatus ParticlesBoundaryValues::ClearPrtclRecv() {
   return TaskStatus::complete;
 }
 
-void Particles::UpdateGIDLB(int &prtclgid, int newrank, int myrank, int destgid, int *pcounter,
-               DualArray1D<ParticleLocationData> slist, int p) {
-  prtclgid = destgid;
-#if MPI_PARALLEL_ENABLED
-  if (newrank != myrank) {
-    int index = (*pcounter)++;
-    slist.d_view(index).prtcl_indx = p;
-    slist.d_view(index).dest_gid   = destgid;
-    slist.d_view(index).dest_rank  = newrank;
-  }
-#endif
-  return;
-}
-
 } // namespace particles

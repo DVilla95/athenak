@@ -25,6 +25,27 @@
 #endif
 
 //----------------------------------------------------------------------------------------
+//! \fn void UpdateGIDLB()
+//! \brief Updates GID of particles that cross boundary of their parent MeshBlock.  If
+//! the new GID is on a different rank, then store in sendlist_buf DvceArray: (1) index of
+//! particle in prtcl array, (2) destination GID, and (3) destination rank.
+
+KOKKOS_INLINE_FUNCTION
+void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int destgid, int *pcounter,
+               DualArray1D<ParticleLocationData> slist, int p) {
+  prtclgid = destgid;
+#if MPI_PARALLEL_ENABLED
+  if (newrank != myrank) {
+    int index = (*pcounter)++;
+    slist.d_view(index).prtcl_indx = p;
+    slist.d_view(index).dest_gid   = destgid;
+    slist.d_view(index).dest_rank  = newrank;
+  }
+#endif
+  return;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn void Mesh::LoadBalance(double *clist, int *rlist, int *slist, int *nlist, int nb)
 //! \brief Calculate distribution of MeshBlocks across ranks based on input cost list
 //! input: clist = cost of each MB (array of length nmbtotal)
@@ -1037,7 +1058,7 @@ void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
   par_for("part_loadbalance",DevExeSpace(),0,(ppart->nprtcl_thispack-1), KOKKOS_LAMBDA(const int p) {
     int m = pi(PGID,p);
     if (dvce_new_rank_eachmb(m) != gv_myrank)
-      ppart->UpdateGIDLB(pi(PGID,p),dvce_new_rank_eachmb(m),gv_myrank,dvce_oldtonew(m),&atom_count(),psendl,p);
+      UpdateGIDLB(pi(PGID,p),dvce_new_rank_eachmb(m),gv_myrank,dvce_oldtonew(m),&atom_count(),psendl,p);
   });
   Kokkos::deep_copy(counter, atom_count);
   nprt_send = counter;
