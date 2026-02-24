@@ -566,7 +566,7 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
     auto ms_idcs = pmy_mesh->mesh_indcs;
     float ncells_per_mb = ms_idcs.nx1*ms_idcs.nx2*ms_idcs.nx3;
     const Real prt_cost = ppart->prtcl_cost;
-    for (int i=0; i<new_nmb; i++) {new_cost_eachmb[i] += prt_cost*gather_ppmb[newtoold[i]]/ncells_per_mb;}
+    for (int i=0; i<new_nmb; i++) {new_cost_eachmb[i] += prt_cost*gather_ppmb[newtoold[i]];}
   }
   pm->LoadBalance(new_cost_eachmb, new_rank_eachmb, new_gids_eachrank, new_nmb_eachrank,
                   new_nmb_total);
@@ -746,6 +746,9 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   // clean-up and return
   delete [] newtoold;
   delete [] oldtonew;
+  if (has_prtcls)
+    delete [] gather_ppmb;
+    delete [] prtcls_per_mb_this;
 
   // Step 11.
   // Recalculate ADM variables if necessary.

@@ -34,8 +34,8 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
 
   // read number of particles per cell, and calculate number of particles this pack
   Real ppc = pin->GetOrAddReal("particles","ppc",1.0);
-  prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",2.0);
-  prtcl_cost = pin->GetOrAddReal("particles","prtcl_balance_cost",1.0);
+  prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",1.0);
+  prtcl_cost = pin->GetOrAddReal("particles","prtcl_balance_cost",0.1);
 
   // compute number of particles as real number, since ppc can be < 1
   auto &indcs = pmy_pack->pmesh->mb_indcs;
