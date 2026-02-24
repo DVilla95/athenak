@@ -162,7 +162,7 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
 
 #if MPI_PARALLEL_ENABLED
   if (check_balance) {
-    std::cout << std::endl << "Load balance: Rank " << global_variable::my_rank << " currently handles " 
+    std::cout << "Load balance: Rank " << global_variable::my_rank << " currently handles " 
       << pmy_mesh->nmb_thisrank << " MBs";
     if (pmy_mesh->pmb_pack->ppart != nullptr) {
       std::cout << ", and " << pmy_mesh->nprtcl_thisrank << " particles" ;
