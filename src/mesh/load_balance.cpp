@@ -36,7 +36,7 @@ void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int destgid, int *pcoun
   prtclgid = destgid;
 #if MPI_PARALLEL_ENABLED
   if (newrank != myrank) {
-    int index = (*pcounter)++;
+    int index = Kokkos::atomic_fetch_add(pcounter,1);
     slist.d_view(index).prtcl_indx = p;
     slist.d_view(index).dest_gid   = destgid;
     slist.d_view(index).dest_rank  = newrank;
@@ -1046,14 +1046,13 @@ void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
   int counter=0;
   Kokkos::View<int> atom_count("atom_count");
   Kokkos::deep_copy(atom_count, counter);
-  Kokkos::View<int*, HostMemSpace> aux_view("dvce_new_rank",1);
-  Kokkos::realloc(aux_view, nnew_nmb);
+  Kokkos::View<int*, HostMemSpace> aux_view("dvce_new_rank",nnew_nmb);
   for (int im=0; im<nnew_nmb; ++im) { aux_view(im) = new_rank_eachmb[im]; }
-  auto dvce_new_rank_eachmb = Kokkos::create_mirror(aux_view);
+  auto dvce_new_rank_eachmb = Kokkos::create_mirror(DevExeSpace(), aux_view);
   Kokkos::deep_copy(dvce_new_rank_eachmb, aux_view);
   Kokkos::realloc(aux_view, nold_nmb);
   for (int im=0; im<nold_nmb; ++im) { aux_view(im) = oldtonew[im]; }
-  auto dvce_oldtonew = Kokkos::create_mirror(aux_view);
+  auto dvce_oldtonew = Kokkos::create_mirror(DevExeSpace(), aux_view);
   Kokkos::deep_copy(dvce_oldtonew, aux_view);
   par_for("part_loadbalance",DevExeSpace(),0,(ppart->nprtcl_thispack-1), KOKKOS_LAMBDA(const int p) {
     int m = pi(PGID,p);
