@@ -235,7 +235,7 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     omega = sqrt( omega );
     omega /= u0;
     omega *= q_over_m;
-    min_dt1 = std::fmin(min_dt1, std::fabs(0.5/omega));
+    min_dt1 = std::fmin(min_dt1, std::fabs(M_PI/omega));
 
   }, Kokkos::Min<Real>(dt1), Kokkos::Min<Real>(dt2), Kokkos::Min<Real>(dt3));
   dtnew = dt1;
