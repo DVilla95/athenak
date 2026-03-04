@@ -91,65 +91,99 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 
   // x component of E centered along x edge
 	Real x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
-	Real x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	Real x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+  Real weight;
 	// Interpolate Electric Field at new particle location x1, x2, x3
-  Real weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = (prtcl_x[0] - x1v)/Dx;
+  bool fwd = weight > 0; // Particle is in the "upper" half of the cell, interpolate to following X
   weight = fabs(weight);
-	E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip))/Dx;
-	E[1] = e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip))/Dx;
-	E[2] = e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip))/Dx;
+  if (fwd)  { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip)); }
+  else      { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip-1) - e0_.x1e(m, kp, jp, ip)); }
+  // y and z components of E centered along y and z edge, meaning leftmost in x
+	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
+  weight = (prtcl_x[0] - x1v)/Dx;
+  weight = fabs(weight); // This should be redundant
+  // Only look at "next" index, no need to check which half of the cell
+	E[1] = e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip));
+	E[2] = e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip));
 
   // x component of B centered along yz face
 	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
-  x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
 	// Interpolate Magnetic Field at new particle location x1, x2, x3
-  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+  weight = (prtcl_x[0] - x1v)/Dx;
   weight = fabs(weight);
-	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip))/Dx;
-	B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip))/Dx;
-	B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip))/Dx;
+  // Only look at "next" index, no need to check which half of the cell
+	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip));
+	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
+  weight = (prtcl_x[0] - x1v)/Dx;
+  fwd = weight > 0; // Particle is in the "upper" half of the cell, interpolate to following X
+  weight = fabs(weight);
+  if (fwd) {
+    B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip));
+    B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip));
+  } else {
+    B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip-1) - b0_.x2f(m, kp, jp, ip));
+    B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip-1) - b0_.x3f(m, kp, jp, ip));
+  }
 
   // y component of E centered along y edge
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
-	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
+  weight = (prtcl_x[1] - x1v)/Dy;
+  fwd = weight > 0;
   weight = fabs(weight);
-	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip))/Dy;
-	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip))/Dy;
-	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip))/Dy;
+  if (fwd)  { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip)); }
+  else      { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp-1, ip) - e0_.x2e(m, kp, jp, ip)); }
+	x1v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+  weight = (prtcl_x[1] - x1v)/Dy;
+  weight = fabs(weight);
+	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip));
+	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip));
 
   // y component of B centered along xz face
-	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
-	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	x1v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
+  weight = (prtcl_x[1] - x1v)/Dy;
   weight = fabs(weight);
-	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip))/Dy;
-	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip))/Dy;
-	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip))/Dy;
+	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip));
+	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
+  weight = (prtcl_x[1] - x1v)/Dy;
+  fwd = weight > 0;
+  weight = fabs(weight);
+  if (fwd) {
+    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip));
+    B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip));
+  } else {
+    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp-1, ip) - b0_.x1f(m, kp, jp, ip));
+    B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp-1, ip) - b0_.x3f(m, kp, jp, ip));
+  }
 
   // z component of E centered along z edge
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	x2v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-	x3v = CellCenterX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[2] - x1v)/Dz;
+  fwd = weight > 0;
   weight = fabs(weight);
-	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip))/Dz;
-	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip))/Dz;
-	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip))/Dz;
+  if (fwd)  { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
+  else      { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp-1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
+	x1v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[2] - x1v)/Dz;
+  weight = fabs(weight);
+	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip));
+	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip));
 
   // z component of B centered along yz face
-	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
-	x2v = CellCenterX(jp, indcs.nx2, x2min, x2max);
-	x3v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[0] - x1v)*(prtcl_x[1] - x2v)*(prtcl_x[2] - x3v);
+	x1v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[2] - x1v)/Dz;
   weight = fabs(weight);
-	B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip))/Dz;
-	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip))/Dz;
-	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip))/Dz;
+	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip));
+	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
+  weight = (prtcl_x[2] - x1v)/Dz;
+  fwd = weight > 0;
+  weight = fabs(weight);
+  if (fwd) {
+    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip));
+    B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip));
+  } else {
+    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp-1, jp, ip) - b0_.x1f(m, kp, jp, ip));
+    B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp-1, jp, ip) - b0_.x2f(m, kp, jp, ip));
+  }
   for (int i = 0; i<3; ++i) {
     E[i] /= 3.0;
     B[i] /= 3.0;
