@@ -74,7 +74,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	int kp = (prtcl_x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
   // Sanity check: sometimes particles can make excessively large steps during NL iterations.
   // Returning the boolean as false allows to reset the iteration variables without crashing the whole code
-  if (ip < 0 || jp < 0 || kp < 0
+  if (ip < 1 || jp < 1 || kp < 1
       || ip > (indcs.ie + indcs.ng - 1) || jp > (indcs.je + indcs.ng - 1) || kp > (indcs.ke + indcs.ng - 1) ) {
     out_of_bounds = true;
     return;
@@ -94,7 +94,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
   Real weight;
 	// Interpolate Electric Field at new particle location x1, x2, x3
   weight = (prtcl_x[0] - x1v)/Dx;
-  bool fwd = weight > 0; // Particle is in the "upper" half of the cell, interpolate to following X
+  bool fwd = (weight > 0); // Particle is in the "upper" half of the cell, interpolate to following X
   weight = fabs(weight);
   if (fwd)  { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip)); }
   else      { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip-1) - e0_.x1e(m, kp, jp, ip)); }
@@ -115,7 +115,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip));
 	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
   weight = (prtcl_x[0] - x1v)/Dx;
-  fwd = weight > 0; // Particle is in the "upper" half of the cell, interpolate to following X
+  fwd = (weight > 0); // Particle is in the "upper" half of the cell, interpolate to following X
   weight = fabs(weight);
   if (fwd) {
     B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip));
@@ -128,7 +128,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
   // y component of E centered along y edge
 	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
   weight = (prtcl_x[1] - x1v)/Dy;
-  fwd = weight > 0;
+  fwd = (weight > 0);
   weight = fabs(weight);
   if (fwd)  { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip)); }
   else      { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp-1, ip) - e0_.x2e(m, kp, jp, ip)); }
@@ -145,7 +145,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip));
 	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
   weight = (prtcl_x[1] - x1v)/Dy;
-  fwd = weight > 0;
+  fwd = (weight > 0);
   weight = fabs(weight);
   if (fwd) {
     B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip));
@@ -158,7 +158,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
   // z component of E centered along z edge
 	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[2] - x1v)/Dz;
-  fwd = weight > 0;
+  fwd = (weight > 0);
   weight = fabs(weight);
   if (fwd)  { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
   else      { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp-1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
@@ -175,7 +175,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip));
 	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
   weight = (prtcl_x[2] - x1v)/Dz;
-  fwd = weight > 0;
+  fwd = (weight > 0);
   weight = fabs(weight);
   if (fwd) {
     B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip));
