@@ -167,7 +167,7 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
     if (pmy_mesh->pmb_pack->ppart != nullptr) {
       std::cout << ", and " << pmy_mesh->nprtcl_thisrank << " particles" ;
     }
-    std::cout << "." << std::endl << std::endl;
+    std::cout << "." << std::endl;
   }
 #endif
   return;

@@ -539,7 +539,15 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
     Real elapsed = pwall_clock_->seconds();
     std::cout << "elapsed=" << std::scientific << std::setprecision(dtprcsn) << elapsed
               << " cycle=" << pm->ncycle
-              << " time=" << pm->time << " dt=" << pm->dt << std::endl;
+              << " time=" << pm->time << " dt=" << pm->dt;
+    if (pm->pmb_pack->ppart != nullptr) {
+      std::cout <<std::endl << std::fixed << std::setprecision(1)
+                << "     particles=" << pm->nprtcl_total
+                << " iterations(avg)=" << pm->avg_iter_prtcl
+                << " iterations(max)=" << pm->max_iter_prtcl
+                << " convergencefails=" << pm->nfails_prtcl;
+    }
+    std::cout << std::endl;
   }
   return;
 }

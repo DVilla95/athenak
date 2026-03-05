@@ -125,6 +125,9 @@ class Mesh {
 
   int nprtcl_thisrank;     // number of particles this rank
   int nprtcl_total;        // total number of particles across all ranks
+  Real avg_iter_prtcl;    // cycle diagnostic for particles
+  int max_iter_prtcl;    // cycle diagnostic for particles
+  int nfails_prtcl;             // cycle diagnostic for particles
 
   // following 3x arrays allocated with length [nmb_total] in BuildTreeFromXXXX()
   float *cost_eachmb;            // cost of each MeshBlock
