@@ -142,6 +142,7 @@ class Mesh {
 
   Real time, dt, dtold, cfl_no;
   int ncycle;
+  int ndiag;
   EventCounters ecounter;
 
   int nmb_packs_thisrank;                  // number of MBPacks on this rank

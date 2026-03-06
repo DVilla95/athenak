@@ -66,6 +66,8 @@ Mesh::Mesh(ParameterInput *pin) :
   mesh_indcs.nx2 = pin->GetInteger("mesh", "nx2");
   mesh_indcs.nx3 = pin->GetInteger("mesh", "nx3");
 
+  ndiag = pin->GetOrAddInteger("time", "ndiag", 1);
+
   // define some useful flags that indicate 1D/2D/3D calculations
   if (mesh_indcs.nx3 > 1) {
     three_d = true;
@@ -686,9 +688,11 @@ void Mesh::UpdatePrtclInfo() {
 #if MPI_PARALLEL_ENABLED
   // Share number of particles on each rank with all ranks
   MPI_Allgather(&nprtcl_thisrank,1,MPI_INT,nprtcl_eachrank,1,MPI_INT,MPI_COMM_WORLD);
-  MPI_Allreduce(&pmb_pack->ppart->average_iteration_number,&avg_iter_prtcl,1,MPI_ATHENA_REAL,MPI_SUM,MPI_COMM_WORLD);
-  MPI_Allreduce(&pmb_pack->ppart->max_iteration_number,&max_iter_prtcl,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
-  MPI_Allreduce(&pmb_pack->ppart->fail_num,&nfails_prtcl,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+  if (ncycle % ndiag == 0) { // Only gather this info when it will be needed for printing diags
+    MPI_Allreduce(&pmb_pack->ppart->average_iteration_number,&avg_iter_prtcl,1,MPI_ATHENA_REAL,MPI_SUM,MPI_COMM_WORLD);
+    MPI_Allreduce(&pmb_pack->ppart->max_iteration_number,&max_iter_prtcl,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+    MPI_Allreduce(&pmb_pack->ppart->fail_num,&nfails_prtcl,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+  }
 #endif
   nprtcl_total = 0;
   for (int n=0; n<global_variable::nranks; ++n) {
