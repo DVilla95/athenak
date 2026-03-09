@@ -245,7 +245,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       Real min_en = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
       Real max_en = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
       std::string prtcl_init_type = pin->GetString("particles","init_type");
-      std::string prtcl_init_type_vel = pin->GetString("particles","init_type_vel");
+      std::string prtcl_init_type_vel = pin->GetOrAddString("particles","init_type_vel","default");
       const Real q_over_m = pin->GetOrAddReal("particles", "charge_over_mass", 1);
       // Need these booleans on device, can't use std::string
       // .compare() returns 0 for successful comparison, which is opposite of usual boolean
@@ -360,19 +360,21 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           Real x3max = fabs(size.d_view(m).x3max);
           Real x3i = fmin( x3min, x3max );
           Real x3o = fmax( x3min, x3max );
-          Real r_i, r_o, th, phi;
-          GetBoyerLindquistCoordinates(aux_trs, x1i, x2i, x3i, &r_i, &th, &phi);
-          GetBoyerLindquistCoordinates(aux_trs, x1o, x2o, x3o, &r_o, &th, &phi);
+          Real r_i, r_o, th, phi_i, phi_o;
+          GetBoyerLindquistCoordinates(aux_trs, x1i, x2i, x3i, &r_i, &th, &phi_i);
+          GetBoyerLindquistCoordinates(aux_trs, x1o, x2o, x3o, &r_o, &th, &phi_o);
           //Determine whether the meshblock with index m has cells within the spherical shell
           mb_for_injection[m] = ( mb_for_injection[m] || ( r_o > min_rad && r_i < crit ) );
           if ( mb_for_injection[m] ) { ++mb_count; }
         }, Kokkos::Sum<int>(mbs_in_shell) );
         
         is_crit_satisfied = ( mbs_in_shell > 0 );
-        std::cout << "MBs in shell: " << mbs_in_shell << std::endl;
+        //std::cout << "MBs in shell: " << mbs_in_shell << std::endl;
       }
 
-      if ( ! is_crit_satisfied ) {
+       if ( ! is_crit_satisfied ) {
+      // if ( global_variable::my_rank != 1 ) {
+      // }
         npart = 0;
         Kokkos::realloc(pr, pmbp->ppart->nrdata, 0);
         Kokkos::realloc(pi, pmbp->ppart->nidata, 0);
@@ -412,7 +414,6 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                   
                   Real u[3], b[3];
                   Real this_en = min_en + prtcl_gen.frand()*(max_en - min_en);
-                 // std::cout << this_en << std::endl;
                   if (prtcl_init_rnd){
                     found_mb = true;
                     Real gu[4][4], gl[4][4];
@@ -516,7 +517,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                     // Would probably be more optimal to start from radius and get xyz 
                     int try_this_mb = 0;
                     const int try_lim = 15;
-                    while ( (r < min_rad || r > crit) && try_this_mb <= try_lim ) {
+                    while ( (r <= min_rad || r >= crit) && try_this_mb <= try_lim ) {
                       x1v = x1min + prtcl_gen.frand()*(x1max - x1min);
                       x2v = x2min + prtcl_gen.frand()*(x2max - x2min);
                       x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
@@ -562,7 +563,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
               }
               prtcl_rand.free_state(prtcl_gen);
         });
-        std::cout << "Injected " << npart << " particles." << std::endl;
+        std::cout << "Injected " << npart << " particles in rank " << global_variable::my_rank << "." << std::endl;
       }
     }
     pmbp->pmesh->UpdatePrtclInfo();
