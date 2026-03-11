@@ -1037,34 +1037,39 @@ void MeshRefinement::ClearSendAMR() {
 void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
   particles::Particles* ppart = pmy_mesh->pmb_pack->ppart;
   // Gather info on particles to send/receive
-    // Re-use pre-existing objects for particle communication
+  // Re-use pre-existing objects for particle communication
   int gv_myrank = global_variable::my_rank;
   auto &pi = ppart->prtcl_idata;
   auto &psendl = ppart->pbval_part->sendlist;
-  auto &nprt_send = ppart->pbval_part->nprtcl_send;
-  Kokkos::realloc(psendl, static_cast<int>(ppart->nprtcl_thispack));
-  int counter=0;
-  Kokkos::View<int> atom_count("atom_count");
-  Kokkos::deep_copy(atom_count, counter);
-  Kokkos::View<int*, HostMemSpace> aux_view("dvce_new_rank",nnew_nmb);
-  for (int im=0; im<nnew_nmb; ++im) { aux_view(im) = new_rank_eachmb[im]; }
-  auto dvce_new_rank_eachmb = Kokkos::create_mirror(DevExeSpace(), aux_view);
-  Kokkos::deep_copy(dvce_new_rank_eachmb, aux_view);
-  Kokkos::realloc(aux_view, nold_nmb);
-  for (int im=0; im<nold_nmb; ++im) { aux_view(im) = oldtonew[im]; }
-  auto dvce_oldtonew = Kokkos::create_mirror(DevExeSpace(), aux_view);
-  Kokkos::deep_copy(dvce_oldtonew, aux_view);
-  par_for("part_loadbalance",DevExeSpace(),0,(ppart->nprtcl_thispack-1), KOKKOS_LAMBDA(const int p) {
-    int m = pi(PGID,p);
-    if (dvce_new_rank_eachmb(m) != gv_myrank)
-      UpdateGIDLB(pi(PGID,p),dvce_new_rank_eachmb(m),gv_myrank,dvce_oldtonew(m),&atom_count(),psendl,p);
-  });
-  Kokkos::deep_copy(counter, atom_count);
-  nprt_send = counter;
-  Kokkos::resize(psendl, nprt_send);
   auto &pdestl = ppart->pbval_part->destroylist;
+  auto &nprt_send = ppart->pbval_part->nprtcl_send;
   auto &nprt_del = ppart->pbval_part->nprtcl_destroy;
   nprt_del = 0;
+  auto &nprtcl_this = ppart->nprtcl_thispack;
+  Kokkos::realloc(psendl, static_cast<int>(0.3*nprtcl_this));
+  if (nprtcl_this == 0) {
+    nprt_send = 0;
+  } else {
+    int counter=0;
+    Kokkos::View<int> atom_count("atom_count");
+    Kokkos::deep_copy(atom_count, counter);
+    Kokkos::View<int*, HostMemSpace> aux_view("dvce_new_rank",nnew_nmb);
+    for (int im=0; im<nnew_nmb; ++im) { aux_view(im) = new_rank_eachmb[im]; }
+    auto dvce_new_rank_eachmb = Kokkos::create_mirror(DevExeSpace(), aux_view);
+    Kokkos::deep_copy(dvce_new_rank_eachmb, aux_view);
+    Kokkos::realloc(aux_view, nold_nmb);
+    for (int im=0; im<nold_nmb; ++im) { aux_view(im) = oldtonew[im]; }
+    auto dvce_oldtonew = Kokkos::create_mirror(DevExeSpace(), aux_view);
+    Kokkos::deep_copy(dvce_oldtonew, aux_view);
+    par_for("part_loadbalance",DevExeSpace(),0,(nprtcl_this-1), KOKKOS_LAMBDA(const int p) {
+      int m = pi(PGID,p);
+      if ( (dvce_new_rank_eachmb(m) != gv_myrank) || (dvce_oldtonew(m) != m) )
+        UpdateGIDLB(pi(PGID,p),dvce_new_rank_eachmb(m),gv_myrank,dvce_oldtonew(m),&atom_count(),psendl,p);
+    });
+    Kokkos::deep_copy(counter, atom_count);
+    nprt_send = counter;
+  }
+  Kokkos::resize(psendl, nprt_send);
   Kokkos::realloc(pdestl, nprt_del);
   // sync sendlist device array with host
   psendl.template modify<DevExeSpace>();

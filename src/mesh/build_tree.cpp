@@ -480,7 +480,7 @@ void Mesh::BuildTreeFromRestart(ParameterInput *pin, IOWrapper &resfile,
 
   // Fix maximum number of MeshBlocks per rank with AMR
   nmb_maxperrank = nmb_thisrank;
-  if (adaptive) {
+  if (multilevel) {
     if (pin->DoesParameterExist("mesh_refinement", "max_nmb_per_rank")) {
       nmb_maxperrank = pin->GetReal("mesh_refinement", "max_nmb_per_rank");
       if (nmb_maxperrank < nmb_thisrank) {

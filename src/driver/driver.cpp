@@ -541,7 +541,7 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
               << " cycle=" << pm->ncycle
               << " time=" << pm->time << " dt=" << pm->dt;
     if (pm->pmb_pack->ppart != nullptr) {
-      std::cout <<std::endl << std::fixed << std::setprecision(1)
+      std::cout << std::endl << std::fixed << std::setprecision(1)
                 << "     particles=" << pm->nprtcl_total
                 << " iterations(avg)=" << pm->avg_iter_prtcl
                 << " iterations(max)=" << pm->max_iter_prtcl
