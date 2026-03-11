@@ -36,6 +36,9 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   Real ppc = pin->GetOrAddReal("particles","ppc",1.0);
   prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",1.0);
   prtcl_cost = pin->GetOrAddReal("particles","prtcl_balance_cost",0.1);
+  fail_num = 0;
+  average_iteration_number = 0.0;
+  max_iteration_number = 0;
 
   // compute number of particles as real number, since ppc can be < 1
   auto &indcs = pmy_pack->pmesh->mb_indcs;
@@ -43,7 +46,6 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   Real r_npart = ppc*static_cast<Real>((pmy_pack->nmb_thispack)*ncells);
   // then cast to integer
   nprtcl_thispack = static_cast<int>(r_npart);
-  average_iteration_number = 0.0;
 
   // select particle type
   {
@@ -241,7 +243,6 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
   dtnew = dt1;
   if (pmy_pack->pmesh->multi_d) { dtnew = std::min(dtnew, dt2); }
   if (pmy_pack->pmesh->three_d) { dtnew = std::min(dtnew, dt3); }
-  // std::cout << "Max iter: " << max_iteration_number << " avg_iter: " << average_iteration_number << std::endl;
 
   return TaskStatus::complete;
 }
