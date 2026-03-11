@@ -7,6 +7,7 @@
 //  \brief
 
 #include "athena.hpp"
+#include "globals.hpp"
 #include "mesh/mesh.hpp"
 #include "driver/driver.hpp"
 #include "particles.hpp"
@@ -343,6 +344,7 @@ void Particles::GRLorentzIterations( const Real dt ){
   const bool &multi_d = pmy_pack->pmesh->multi_d;
   const bool &three_d = pmy_pack->pmesh->three_d;
   auto gids = pmy_pack->gids;
+  auto gide = pmy_pack->gide;
   const Real &q_over_m = charge_over_mass;
   auto &b0_ = pmy_pack->pmhd->b0;
   auto &e0_ = pmy_pack->pmhd->efld;
@@ -350,8 +352,7 @@ void Particles::GRLorentzIterations( const Real dt ){
   auto &indcs = pmy_pack->pmesh->mb_indcs;
   auto &mbsize = pmy_pack->pmb->mb_size;
 
-  const Real base_x_step = 1.0E-5;
-  const Real base_v_step = 1.0E-5;
+  const Real base_v_step = 1.0E-2;
   int avg_iter = 0;
   int tot_max_iter = 0;
   int tot_n_fails = 0;
@@ -371,6 +372,8 @@ void Particles::GRLorentzIterations( const Real dt ){
     Real x_mid[3], v_mid[3];
     Real RHS_eval_v[3], RHS_eval_x[3]; 
     Real Jacob[6][6];
+    Real invJacob1D[6*6];
+    Real Jacob1D[6*6];
     Real RHS_grad_x1[3], RHS_grad_x2[3], RHS_grad_v1[3], RHS_grad_v2[3];
     Real res[6];
     int n_iter = 1;
@@ -412,12 +415,15 @@ void Particles::GRLorentzIterations( const Real dt ){
       resnorm += SQR(res[i]);
     resold = resnorm;
 
-    Real x_step = base_x_step;
-    Real v_step = base_v_step;
+    Real x_step = std::fmin(mbsize.d_view(m).dx2, mbsize.d_view(m).dx3);
+    x_step = std::fmin(x_step, mbsize.d_view(m).dx1);
+    x_step *= 1.1; // Make sure you sample neighboring cells
+    Real v_step = base_v_step*sqrt(SQR(v_init[0])+SQR(v_init[1])+SQR(v_init[2]));
 
     // Start iterating
     // Using Newton method, thus computing the Jacobian at each iteration
     while( n_iter < it_max && resnorm > it_tol ){
+
     out_of_bounds = false; // Reset check variables
     invert_mat_fail = false;
     ++n_iter;
@@ -438,11 +444,13 @@ void Particles::GRLorentzIterations( const Real dt ){
       GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
       GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
       InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+      if (out_of_bounds) { break; }
       GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
       x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir] - x_step);
       GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
       GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
       InterpolateFields( x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+      if (out_of_bounds) { break; }
       GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
       for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
         Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
@@ -451,58 +459,61 @@ void Particles::GRLorentzIterations( const Real dt ){
       Jacob[full_idx][full_idx] += 1.0; // Diagonal terms
     }
 
-    InterpolateFields( x_mid, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
-
-    // Velocity
-    for (int dir = 0; dir<3; ++dir) {
-      int full_idx = dir + 3;
-      if (dir == 0) { i1 = 1; i2 = 2; }
-      else if (dir == 1) { i1 = 0; i2 = 2; }
-      else if (dir == 2) { i1 = 0; i2 = 1; }
-
-      v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] + v_step);
-      v_grad[i1] = v_mid[i1]; v_grad[i2] = v_mid[i2];
-      GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
-      GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
-      GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-      v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] - v_step);
-      GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
-      GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
-      GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
-      for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
-        Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
-        Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
-      }
-      Jacob[full_idx][full_idx] += 1.0; // Diagonal terms
+    if (!out_of_bounds) {
+      InterpolateFields( x_mid, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
     }
+
+    if (!out_of_bounds) {
+      // Velocity
+      for (int dir = 0; dir<3; ++dir) {
+        int full_idx = dir + 3;
+        if (dir == 0) { i1 = 1; i2 = 2; }
+        else if (dir == 1) { i1 = 0; i2 = 2; }
+        else if (dir == 2) { i1 = 0; i2 = 1; }
+
+        v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] + v_step);
+        v_grad[i1] = v_mid[i1]; v_grad[i2] = v_mid[i2];
+        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
+        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
+        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+        v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] - v_step);
+        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
+        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
+        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+        for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
+          Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
+          Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
+        }
+        Jacob[full_idx][full_idx] += 1.0; // Diagonal terms
+      }
     
-    // This not ideal: Size of matrix is fixed
-    Real Jacob1D[6*6];
-    Real invJacob1D[6*6];
-    for (int ii = 0; ii<ndim; ++ii){
-      for (int ij = 0; ij<ndim; ++ij){
-        Jacob1D[ii*ndim + ij] = Jacob[ii][ij];
+      // This not ideal: Size of matrix is fixed
+      for (int ii = 0; ii<ndim; ++ii){
+        for (int ij = 0; ij<ndim; ++ij){
+          Jacob1D[ii*ndim + ij] = Jacob[ii][ij];
+        }
       }
-    }
-    InvertMatrixLU( ndim, Jacob1D, invJacob1D, invert_mat_fail );
-    if (invert_mat_fail) {
-      x_step = (mbsize.d_view(m).dx1 + mbsize.d_view(m).dx2 + mbsize.d_view(m).dx3)/(6.0*n_iter) ;
-      v_step *= 25.0;
-      continue;
-    }
+      InvertMatrixLU( ndim, Jacob1D, invJacob1D, invert_mat_fail );
+      if (invert_mat_fail) {
+        x_step = (mbsize.d_view(m).dx1 + mbsize.d_view(m).dx2 + mbsize.d_view(m).dx3)/(6.0*n_iter) ;
+        v_step *= 25.0;
+        continue;
+      }
 
-    GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
-    GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
-    // InterpolateFields( pi(PTAG,p), x_mid, b0_, e0_, mbsize, indcs, m, E, B );
-    GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
-    for (int i=0; i<3; ++i) {
-      res[i]   = damp_f*(x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
-      res[i+3] = damp_f*(v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+      GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
+      GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
+      // InterpolateFields( pi(PTAG,p), x_mid, b0_, e0_, mbsize, indcs, m, E, B );
+      GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+      for (int i=0; i<3; ++i) {
+        res[i]   = damp_f*(x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+        res[i+3] = damp_f*(v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+      }
+      resnorm = 0.0;
+      for (int i = 0; i<ndim; ++i) 
+        resnorm += SQR(res[i]);
     }
-    resnorm = 0.0;
-    for (int i = 0; i<ndim; ++i) 
-      resnorm += SQR(res[i]);
     if (resnorm > resold || out_of_bounds) {
+      // If something went wrong, use previous iteration to "reset" iteration variables
       damp_f *= 0.5;
       for (int oj = 0; oj<3; ++oj) {
         x_eval[oj] = x_init[oj] + RHS_eval_x[oj]*dt;
@@ -522,6 +533,7 @@ void Particles::GRLorentzIterations( const Real dt ){
     }; // while
 
     // Done with iterations, update ``true'' values
+    if (n_iter == it_max) {aux_n_fails++;}
     pr(IPVX,p) = v_eval[0];
     if (multi_d) { pr(IPVY,p) = v_eval[1]; }
     if (three_d) { pr(IPVZ,p) = v_eval[2]; }
@@ -530,10 +542,13 @@ void Particles::GRLorentzIterations( const Real dt ){
     if (three_d) { pr(IPZ,p) = x_eval[2]; }
     aux_n_iter += n_iter;
     max_n_iter = std::fmax(max_n_iter, n_iter);
-    if (n_iter == it_max) {aux_n_fails++;}
   }, Kokkos::Sum<int>(avg_iter), Kokkos::Max<int>(tot_max_iter), Kokkos::Sum<int>(tot_n_fails));
-  fail_num = tot_n_fails;
-  average_iteration_number = static_cast<Real>(avg_iter)/nprtcl_thispack;
+  fail_num += tot_n_fails;
+  if (nprtcl_thispack > 0) { average_iteration_number = static_cast<Real>(avg_iter)/nprtcl_thispack; }
+  else { 
+    average_iteration_number = 0.0; 
+    tot_max_iter = 0;
+  }
   max_iteration_number = tot_max_iter;
   return;
 }
