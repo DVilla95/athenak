@@ -352,7 +352,9 @@ void Particles::GRLorentzIterations( const Real dt ){
   auto &indcs = pmy_pack->pmesh->mb_indcs;
   auto &mbsize = pmy_pack->pmb->mb_size;
 
-  const Real base_v_step = 1.0E-2;
+  const Real base_v_step = 1.0e-6;
+  const Real base_x_step = 1.0e-6;
+  const Real damp_min = 1.0e-6;
   int avg_iter = 0;
   int tot_max_iter = 0;
   int tot_n_fails = 0;
@@ -384,7 +386,7 @@ void Particles::GRLorentzIterations( const Real dt ){
     int i1, i2;
     bool out_of_bounds = false; // Particle could leave MB during iterations (most likely Newton method not converging)
     bool invert_mat_fail = false; // Make sure Jacobians don't become singular
-    Real damp_f = 1.0;
+    Real x_save[3], v_save[3];
 
     GRRHSPosition(x_init, v_init, is_minkowski, spin, RHS_eval_x);
     x_eval[0] = x_init[0] + dt*(RHS_eval_x[0]) ;
@@ -415,10 +417,12 @@ void Particles::GRLorentzIterations( const Real dt ){
       resnorm += SQR(res[i]);
     resold = resnorm;
 
-    Real x_step = std::fmin(mbsize.d_view(m).dx2, mbsize.d_view(m).dx3);
-    x_step = std::fmin(x_step, mbsize.d_view(m).dx1);
-    x_step *= 1.1; // Make sure you sample neighboring cells
-    Real v_step = base_v_step*sqrt(SQR(v_init[0])+SQR(v_init[1])+SQR(v_init[2]));
+    Real x_step, v_step;
+    x_step = mbsize.d_view(m).dx1;
+    v_step = (std::abs(v_init[0]) + std::abs(v_init[1]) + std::abs(v_init[2]))/3.0;
+    Real x_fac, v_fac;
+    x_fac = 1.0;
+    v_fac = 1.0;
 
     // Start iterating
     // Using Newton method, thus computing the Jacobian at each iteration
@@ -434,10 +438,13 @@ void Particles::GRLorentzIterations( const Real dt ){
       
     // Position
     for (int dir = 0; dir<3; ++dir) {
+      Real dirx;
       int full_idx = dir;
-      if (dir == 0) { i1 = 1; i2 = 2; }
-      else if (dir == 1) { i1 = 0; i2 = 2; }
-      else if (dir == 2) { i1 = 0; i2 = 1; }
+      if (dir == 0) { i1 = 1; i2 = 2; dirx = mbsize.d_view(m).dx1; }
+      else if (dir == 1) { i1 = 0; i2 = 2; dirx = mbsize.d_view(m).dx2; }
+      else if (dir == 2) { i1 = 0; i2 = 1; dirx = mbsize.d_view(m).dx3; }
+      x_step = std::fmax(base_x_step, std::abs(x_init[dir]*x_fac*base_x_step));
+      x_step = std::fmin(x_step, dirx);
 
       x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir] + x_step);
       x_grad[i1] = x_mid[i1]; x_grad[i2] = x_mid[i2];
@@ -470,6 +477,8 @@ void Particles::GRLorentzIterations( const Real dt ){
         if (dir == 0) { i1 = 1; i2 = 2; }
         else if (dir == 1) { i1 = 0; i2 = 2; }
         else if (dir == 2) { i1 = 0; i2 = 1; }
+        v_step = std::fmax(base_v_step, std::abs(v_init[dir]*v_fac*base_v_step));
+        v_step = std::fmin(v_step, std::abs(1.0e+3));
 
         v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir] + v_step);
         v_grad[i1] = v_mid[i1]; v_grad[i2] = v_mid[i2];
@@ -495,8 +504,8 @@ void Particles::GRLorentzIterations( const Real dt ){
       }
       InvertMatrixLU( ndim, Jacob1D, invJacob1D, invert_mat_fail );
       if (invert_mat_fail) {
-        x_step = (mbsize.d_view(m).dx1 + mbsize.d_view(m).dx2 + mbsize.d_view(m).dx3)/(6.0*n_iter) ;
-        v_step *= 25.0;
+        x_fac *= 5.0 ;
+        v_fac *= 5.0;
         continue;
       }
 
@@ -505,35 +514,105 @@ void Particles::GRLorentzIterations( const Real dt ){
       // InterpolateFields( pi(PTAG,p), x_mid, b0_, e0_, mbsize, indcs, m, E, B );
       GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
       for (int i=0; i<3; ++i) {
-        res[i]   = damp_f*(x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
-        res[i+3] = damp_f*(v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+        res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+        res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
       }
       resnorm = 0.0;
-      for (int i = 0; i<ndim; ++i) 
-        resnorm += SQR(res[i]);
+      for (int i = 0; i<ndim; ++i) { resnorm += SQR(res[i]); }
     }
-    if (resnorm > resold || out_of_bounds) {
-      // If something went wrong, use previous iteration to "reset" iteration variables
-      damp_f *= 0.5;
-      for (int oj = 0; oj<3; ++oj) {
-        x_eval[oj] = x_init[oj] + RHS_eval_x[oj]*dt;
-        v_eval[oj] = v_init[oj] + RHS_eval_v[oj]*dt;
+
+    if (out_of_bounds) {
+      // Reset
+      x_fac *= 0.1;
+      for (int i=0; i<3; ++i) {
+        x_eval[i] = x_init[i] + RHS_eval_x[i]*dt;
+        v_eval[i] = v_init[i] + RHS_eval_v[i]*dt;
       }
       continue;
     }
-    resold = resnorm;
 
+    Real damp_f = 1.0;
+    if (resnorm > resold) {
+    // If something went wrong, do backtracking
+      bool resume_iter = false;
+      for (int i=0; i<3; ++i) {
+        x_save[i] = x_eval[i];
+        v_save[i] = v_eval[i];
+      }
+      while (damp_f > damp_min && !resume_iter) {
+        for (int i=0; i<3; ++i){
+          for (int j=0; j<6; ++j){
+            x_eval[i] = x_save[i] - damp_f*invJacob1D[i*ndim + j]*res[j];
+            v_eval[i] = v_save[i] - damp_f*invJacob1D[(i+3)*ndim + j]*res[j];
+          }
+        }
+        GRRHSPosition(x_eval, v_eval, is_minkowski, spin, RHS_eval_x);
+        GRRHSVelocity(x_eval, v_eval, is_minkowski, spin, RHS_eval_v);
+        InterpolateFields( x_eval, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+        if (out_of_bounds) {
+          damp_f *= 0.5;
+          continue;
+        }
+        GRLorentz_Terms(x_eval, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+        for (int i=0; i<3; ++i) {
+          res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+          res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+        }
+        resnorm = 0.0;
+        for (int i = 0; i<ndim; ++i) {resnorm += SQR(res[i]);}
+        if (resnorm < resold) {
+          resume_iter = true;
+        } else {
+          damp_f *= 0.5;
+        }
+      }
+
+      if (!resume_iter) {
+        for (int i=0; i<3; ++i) {
+          x_eval[i] = x_init[i] + RHS_eval_x[i]*dt;
+          v_eval[i] = v_init[i] + RHS_eval_v[i]*dt;
+        }
+        x_fac *= 2.0;
+        v_fac *= 2.0;
+        continue;
+      }
+      for (int i=0; i<3; ++i) {
+        x_eval[i] = x_save[i];
+        v_eval[i] = v_save[i];
+      }
+    }
+    // Regular iteration
     for (int i=0; i<3; ++i){
       for (int j=0; j<6; ++j){
         x_eval[i] -= invJacob1D[i*ndim + j]*res[j];
         v_eval[i] -= invJacob1D[(i+3)*ndim + j]*res[j];
       }
     }
+    resold = resnorm;
 
     }; // while
 
     // Done with iterations, update ``true'' values
-    if (n_iter == it_max) {aux_n_fails++;}
+    if (n_iter == it_max) {
+      // Fallback to mid-point explicit update
+      aux_n_fails++;
+      GRRHSPosition(x_init, v_init, is_minkowski, spin, RHS_eval_x);
+      GRRHSVelocity(x_init, v_init, is_minkowski, spin, RHS_eval_v);
+      InterpolateFields( x_init, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+      GRLorentz_Terms(x_init, v_init, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+      for (int i = 0; i<3; ++i) {
+        x_mid[i] = x_init[i] + 0.5*dt*(RHS_eval_x[i]);
+        v_mid[i] = v_init[i] + 0.5*dt*(RHS_eval_v[i]);
+      }
+      GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
+      GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
+      InterpolateFields( x_mid, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+      GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+      for (int i = 0; i<3; ++i) {
+        x_eval[i] = x_init[i] + dt*(RHS_eval_x[i]);
+        v_eval[i] = v_init[i] + dt*(RHS_eval_v[i]);
+      }
+    }
     pr(IPVX,p) = v_eval[0];
     if (multi_d) { pr(IPVY,p) = v_eval[1]; }
     if (three_d) { pr(IPVZ,p) = v_eval[2]; }
