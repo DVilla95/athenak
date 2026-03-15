@@ -399,7 +399,7 @@ void Particles::GRLorentzIterations( const Real dt ){
     x_eval[1] = x_init[1] + dt*(RHS_eval_x[1]) ;
     x_eval[2] = x_init[2] + dt*(RHS_eval_x[2]) ;
     GRRHSVelocity(x_init, v_init, is_minkowski, spin, RHS_eval_v);
-    InterpolateFields( x_init, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
+    InterpolateFields(x_init, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
     GRLorentz_Terms(x_init, v_init, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
     v_eval[0] = v_init[0] + dt*(RHS_eval_v[0]) ;
     v_eval[1] = v_init[1] + dt*(RHS_eval_v[1]) ;
@@ -431,39 +431,34 @@ void Particles::GRLorentzIterations( const Real dt ){
 
     // Start iterating
     // Using Newton method, thus computing the Jacobian at each iteration
-    while( n_iter < it_max && resnorm > it_tol ){
-
+    do{
     out_of_bounds = false; // Reset check variables
     invert_mat_fail = false;
     ++n_iter;
-    for (int i = 0; i<3; ++i) {
-      x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
-      v_mid[i] = 0.5*(v_eval[i] + v_init[i]);
-    }
       
     // Position
     for (int dir = 0; dir<3; ++dir) {
       Real dirdx;
       int full_idx = dir;
-      if (dir == 0) { i1 = 1; i2 = 2; dirdx = mbsize.d_view(m).dx1; }
+      if      (dir == 0) { i1 = 1; i2 = 2; dirdx = mbsize.d_view(m).dx1; }
       else if (dir == 1) { i1 = 0; i2 = 2; dirdx = mbsize.d_view(m).dx2; }
       else if (dir == 2) { i1 = 0; i2 = 1; dirdx = mbsize.d_view(m).dx3; }
       x_step = std::fmax(base_x_step, std::abs(x_init[dir]*x_fac*base_x_step));
       x_step = std::fmin(x_step, dirdx);
 
-      x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir]) + x_step;
-      x_grad[i1] = x_mid[i1]; x_grad[i2] = x_mid[i2];
-      GRRHSPosition(x_grad, v_mid, is_minkowski, spin, RHS_grad_x1);
-      GRRHSVelocity(x_grad, v_mid, is_minkowski, spin, RHS_grad_v1);
+      x_grad[dir] = x_eval[dir] + x_step;
+      x_grad[i1] = x_eval[i1]; x_grad[i2] = x_eval[i2];
+      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
+      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
       InterpolateFields(x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       if (out_of_bounds) {break;}
-      GRLorentz_Terms(x_grad, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-      x_grad[dir] = 0.5*(x_init[dir] + x_eval[dir]) - x_step;
-      GRRHSPosition(x_grad, v_mid, is_minkowski, spin, RHS_grad_x2);
-      GRRHSVelocity(x_grad, v_mid, is_minkowski, spin, RHS_grad_v2);
+      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+      x_grad[dir] = x_eval[dir] - x_step;
+      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
+      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
       InterpolateFields(x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       if (out_of_bounds) {break;}
-      GRLorentz_Terms(x_grad, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
       for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
         Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
         Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
@@ -480,21 +475,21 @@ void Particles::GRLorentzIterations( const Real dt ){
       // Velocity
       for (int dir = 0; dir<3; ++dir) {
         int full_idx = dir + 3;
-        if (dir == 0) { i1 = 1; i2 = 2; }
+        if      (dir == 0) { i1 = 1; i2 = 2; }
         else if (dir == 1) { i1 = 0; i2 = 2; }
         else if (dir == 2) { i1 = 0; i2 = 1; }
         v_step = std::fmax(base_v_step, std::abs(v_init[dir]*v_fac*base_v_step));
         v_step = std::fmin(v_step, std::abs(v_init[dir]*0.1));
 
-        v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir]) + v_step;
-        v_grad[i1] = v_mid[i1]; v_grad[i2] = v_mid[i2];
-        GRRHSPosition(x_mid, v_grad, is_minkowski, spin, RHS_grad_x1);
-        GRRHSVelocity(x_mid, v_grad, is_minkowski, spin, RHS_grad_v1);
-        GRLorentz_Terms(x_mid, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
-        v_grad[dir] = 0.5*(v_init[dir] + v_eval[dir]) - v_step;
-        GRRHSPosition(x_mid, v_grad, is_minkowski, spin, RHS_grad_x2);
-        GRRHSVelocity(x_mid, v_grad, is_minkowski, spin, RHS_grad_v2);
-        GRLorentz_Terms(x_mid, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+        v_grad[dir] = v_eval[dir] + v_step;
+        v_grad[i1] = v_eval[i1]; v_grad[i2] = v_eval[i2];
+        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
+        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
+        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+        v_grad[dir] = v_eval[dir] - v_step;
+        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
+        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
+        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
         for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
           Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
           Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
@@ -519,6 +514,10 @@ void Particles::GRLorentzIterations( const Real dt ){
         continue;
       }
 
+      for (int i = 0; i<3; ++i) {
+        x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
+        v_mid[i] = 0.5*(v_eval[i] + v_init[i]);
+      }
       GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
       GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
       // InterpolateFields( pi(PTAG,p), x_eval, b0_, e0_, mbsize, indcs, m, E, B );
@@ -594,8 +593,8 @@ void Particles::GRLorentzIterations( const Real dt ){
         }
         GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
         for (int i=0; i<3; ++i) {
-          res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
-          res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+          res[i]   = damp_f*(x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+          res[i+3] = damp_f*(v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
         }
         for (int i=0; i<6; ++i) {res[i] /= scales[i];}
         resnorm = 0.0;
@@ -618,7 +617,7 @@ void Particles::GRLorentzIterations( const Real dt ){
       }
     }
 
-    }; // while
+    }while( (n_iter < it_max) && (resnorm > it_tol) ); // while
 
     // Done with iterations, update ``true'' values
     if (n_iter == it_max) {
