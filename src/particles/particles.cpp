@@ -34,7 +34,6 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
 
   // read number of particles per cell, and calculate number of particles this pack
   Real ppc = pin->GetOrAddReal("particles","ppc",1.0);
-  prtcl_push_safety = pin->GetOrAddReal("particles","push_safety",1.0);
   prtcl_cost = pin->GetOrAddReal("particles","prtcl_balance_cost",0.1);
   fail_num = 0;
   average_iteration_number = 0.0;
@@ -168,7 +167,8 @@ void Particles::CreateParticleTags(ParameterInput *pin) {
 
 //----------------------------------------------------------------------------------------
 // NewTimeStep()
-// Find new dt imposed by particle velocities
+// Find new dt imposed by particle velocities or Larmor frequency.
+// Currently this is only compatible with the imr pusher.
 TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 	auto &pr = prtcl_rdata;
 	auto &pi = prtcl_idata;
@@ -184,7 +184,6 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 	auto &indcs = pmy_pack->pmesh->mb_indcs;
   const int nghst = indcs.ng;
   auto dt = (pmy_pack->pmesh->dt);
-  auto prtcl_psf = prtcl_push_safety; // Assume during iteration particle velocity might be larger than at start of iterative push
   Real dt1 = std::numeric_limits<float>::max();
   Real dt2 = std::numeric_limits<float>::max();
   Real dt3 = std::numeric_limits<float>::max();
@@ -197,9 +196,6 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     // Real rhs_v[3];
     Real E[3], B[3];
     // GRRHSVelocity(x, u, is_minkowski, spin, rhs_v);
-    // int ip = (x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
-    // int jp = (x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
-    // int kp = (x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
     bool out_of_bounds = false;
     InterpolateFields( x, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds );
     // GRLorentz_Terms(x, u, E, B, is_minkowski, spin, q_over_m, rhs_v);
@@ -211,7 +207,6 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
     GRRHSPosition(x, u, is_minkowski, spin, v);
     for (int i=0; i<3; ++i) {
       v[i] = std::fabs(v[i]);
-      v[i] *= prtcl_psf;
     }
 
     // If a particle is almost at the boundary of a meshblock
@@ -253,7 +248,6 @@ TaskStatus Particles::NewTimeStep(Driver *pdrive, int stage) {
 void Particles::CountPartclsPerMB(int *ppmb) {
 	auto &pi = prtcl_idata;
   auto &gids = pmy_pack->gids;
-  auto &gide = pmy_pack->gide;
   auto &nmb_total = pmy_pack->pmesh->nmb_total;
 
   for (int m=0; m<pmy_pack->pmesh->nmb_thisrank; ++m)
