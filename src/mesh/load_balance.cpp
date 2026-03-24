@@ -1046,7 +1046,7 @@ void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
   auto &nprt_del = ppart->pbval_part->nprtcl_destroy;
   nprt_del = 0;
   auto &nprtcl_this = ppart->nprtcl_thispack;
-  Kokkos::realloc(psendl, static_cast<int>(0.3*nprtcl_this));
+  Kokkos::realloc(psendl, static_cast<int>(0.8*nprtcl_this)); // Load balance can end up moving more than half the particles on a rank
   if (nprtcl_this == 0) {
     nprt_send = 0;
   } else {

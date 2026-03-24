@@ -537,9 +537,8 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   particles::Particles* ppart = pmy_mesh->pmb_pack->ppart;
   const bool has_prtcls = ppart != nullptr;
   if (has_prtcls) {
-    gather_ppmb = new int[old_nmb];
-    for (int im=0; im<old_nmb; ++im)
-      gather_ppmb[im] = 0.0;
+    gather_ppmb = new int[new_nmb];
+    for (int im=0; im<old_nmb; ++im) {gather_ppmb[im] = 0;}
   }
 
 #if MPI_PARALLEL_ENABLED
@@ -562,7 +561,7 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
 #endif
 
   for (int i=0; i<new_nmb; i++) {new_cost_eachmb[i] = 1.0;}
-  if (ppart != nullptr) {
+  if (has_prtcls) {
     auto ms_idcs = pmy_mesh->mesh_indcs;
     float ncells_per_mb = ms_idcs.nx1*ms_idcs.nx2*ms_idcs.nx3;
     const Real prt_cost = ppart->prtcl_cost;
@@ -603,9 +602,11 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   // Pack send buffers for load blancing and send data
 #if MPI_PARALLEL_ENABLED
   InitRecvAMR(nleaf);
-  if (has_prtcls) {InitRecvAMR_prtcl(old_nmb,new_nmb);}
   PackAndSendAMR(nleaf);
-  if (has_prtcls) {(void) ppart->pbval_part->PackAndSendPrtcls();}
+  if (has_prtcls) {
+    InitRecvAMR_prtcl(old_nmb,new_nmb);
+    (void) ppart->pbval_part->PackAndSendPrtcls();
+  }
   nmb_sent_thisrank += nmb_send;
 #endif
   int nprt_send = 0; int nprt_recv = 0;
@@ -675,7 +676,7 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   if (has_prtcls) {
    (void) ppart->pbval_part->ClearPrtclSend();
    (void) ppart->pbval_part->ClearPrtclRecv(); // Wait for communication -> Effectively blocking
-   (void) ppart->pbval_part->RecvAndUnpackPrtcls();
+   (void) ppart->pbval_part->RecvAndUnpackPrtcls(); // This also updates particle info across ranks -> Need to call on all ranks regardless
   }
 #endif
 
@@ -735,7 +736,6 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   pm->pmb_pack->gids = pm->gids_eachrank[global_variable::my_rank];
   pm->pmb_pack->gide = pm->pmb_pack->gids + pm->nmb_eachrank[global_variable::my_rank]-1;
   pm->pmb_pack->nmb_thispack = pm->pmb_pack->gide - pm->pmb_pack->gids + 1;
-  if (has_prtcls) {pm->UpdatePrtclInfo();}
 
   delete (pm->pmb_pack->pmb);
   delete (pm->pmb_pack->pcoord);
