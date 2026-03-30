@@ -544,7 +544,7 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
       std::cout << std::endl << std::fixed << std::setprecision(1)
                 << "     particles=" << pm->nprtcl_total
                 << " iterations(avg)=" << pm->avg_iter_prtcl
-                << " fail-rate=1/" << pm->nprtcl_total/(std::max(1,pm->nfails_prtcl);
+                << " fail-rate=1/" << pm->nprtcl_total/(std::max(1,pm->nfails_prtcl));
     }
     std::cout << std::endl;
   }
