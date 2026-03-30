@@ -386,5 +386,26 @@ void ComputeMetricDerivatives(Real x, Real y, Real z, bool minkowski, Real a,
   ComputeMetricDerivatives(x, y, z, minkowski, a, get_upper, dg_dx1, dg_dx2, dg_dx3);
 }
 
+//----------------------------------------------------------------------------------------
+// Function for returning corresponding Boyer-Lindquist coordinates of cartesian point
+// Based on the function originally in pgen/gr_torus.cpp, but made available more broadly
+// Inputs:
+//   x1,x2,x3: global coordinates to be converted
+// Outputs:
+//   pr,ptheta,pphi: variables pointed to set to Boyer-Lindquist coordinates
+
+KOKKOS_INLINE_FUNCTION
+static void GetBoyerLindquistCoordinates(Real spin,
+                                         Real x1, Real x2, Real x3,
+                                         Real *pr, Real *ptheta, Real *pphi) {
+  Real rad = sqrt(SQR(x1) + SQR(x2) + SQR(x3));
+  Real r = fmax((sqrt( SQR(rad) - SQR(spin) + sqrt(SQR(SQR(rad)-SQR(spin))
+                      + 4.0*SQR(spin)*SQR(x3)) ) / sqrt(2.0)), 1.0);
+  *pr = r;
+  *ptheta = (fabs(x3/r) < 1.0) ? acos(x3/r) : acos(copysign(1.0, x3));
+  *pphi = atan2(r*x2-spin*x1, spin*x2+r*x1) -
+          spin*r/(SQR(r)-2.0*r+SQR(spin));
+  return;
+}
 
 #endif // COORDINATES_CARTESIAN_KS_HPP_

@@ -47,6 +47,7 @@
 
 #include "particles/particles.hpp"
 #include "particles/particles_helpers.hpp"
+#include "particles/particles_injection.hpp"
 
 #include <Kokkos_Random.hpp>
 
@@ -69,11 +70,6 @@ static Real LogHAux(struct torus_pgen pgen, Real r, Real sin_theta);
 
 KOKKOS_INLINE_FUNCTION
 static Real CalculateT(struct torus_pgen pgen, Real rho, Real ptot_over_rho);
-
-KOKKOS_INLINE_FUNCTION
-static void GetBoyerLindquistCoordinates(struct torus_pgen pgen,
-                                         Real x1, Real x2, Real x3,
-                                         Real *pr, Real *ptheta, Real *pphi);
 
 KOKKOS_INLINE_FUNCTION
 static void CalculateVelocityInTiltedTorus(struct torus_pgen pgen,
@@ -127,11 +123,6 @@ struct torus_pgen {
 };
 
   torus_pgen torus;
-
-KOKKOS_INLINE_FUNCTION
-static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
-                       Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
-                       bool is_mnkwsk, Real bh_a, bool set_radius);
 
 // refine the whole domain at restart
 void RefineRestart(MeshBlockPack *pmbp) {
@@ -361,8 +352,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           Real x3i = fmin( x3min, x3max );
           Real x3o = fmax( x3min, x3max );
           Real r_i, r_o, th, phi_i, phi_o;
-          GetBoyerLindquistCoordinates(aux_trs, x1i, x2i, x3i, &r_i, &th, &phi_i);
-          GetBoyerLindquistCoordinates(aux_trs, x1o, x2o, x3o, &r_o, &th, &phi_o);
+          GetBoyerLindquistCoordinates(aux_trs.spin, x1i, x2i, x3i, &r_i, &th, &phi_i);
+          GetBoyerLindquistCoordinates(aux_trs.spin, x1o, x2o, x3o, &r_o, &th, &phi_o);
           //Determine whether the meshblock with index m has cells within the spherical shell
           mb_for_injection[m] = ( mb_for_injection[m] || ( r_o > min_rad && r_i < crit ) );
           if ( mb_for_injection[m] ) { ++mb_count; }
@@ -403,7 +394,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                 Real &x3max = size.d_view(m).x3max;
                 Real x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
                 Real r, th, phi;
-                GetBoyerLindquistCoordinates(aux_trs, x1v, x2v, x3v, &r, &th, &phi);
+                GetBoyerLindquistCoordinates(aux_trs.spin, x1v, x2v, x3v, &r, &th, &phi);
                 // This potentially overwrites spherical shell initialization, but it's good to prevent particles inside the horizon
                 if (r >= min_rad){
                   //Actually initialize the particle
@@ -521,7 +512,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
                       x1v = x1min + prtcl_gen.frand()*(x1max - x1min);
                       x2v = x2min + prtcl_gen.frand()*(x2max - x2min);
                       x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
-                      GetBoyerLindquistCoordinates(aux_trs, x1v, x2v, x3v, &r, &th, &phi);
+                      GetBoyerLindquistCoordinates(aux_trs.spin, x1v, x2v, x3v, &r, &th, &phi);
                       ++try_this_mb;
                     }
                     if (try_this_mb >= try_lim) {
@@ -718,7 +709,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
     // Calculate Boyer-Lindquist coordinates of cell
     Real r, theta, phi;
-    GetBoyerLindquistCoordinates(trs, x1v, x2v, x3v, &r, &theta, &phi);
+    GetBoyerLindquistCoordinates(trs.spin, x1v, x2v, x3v, &r, &theta, &phi);
     Real sin_theta = sin(theta);
     Real cos_theta = cos(theta);
     Real sin_phi = sin(phi);
@@ -751,7 +742,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     // we have to recalculate r; we try to avoid excising cells within the horizon which
     // might have a corner sticking out of the horizon.
     Real r_excise, theta_excise, phi_excise;
-    GetBoyerLindquistCoordinates(trs, x1v + copysign(0.5*dx1,x1v),
+    GetBoyerLindquistCoordinates(trs.spin, x1v + copysign(0.5*dx1,x1v),
                                       x2v + copysign(0.5*dx2,x2v),
                                       x3v + copysign(0.5*dx3,x3v), &r_excise,
                                       &theta_excise, &phi_excise);
@@ -1099,7 +1090,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
       // Calculate Boyer-Lindquist coordinates of cell
       Real r, theta, phi;
-      GetBoyerLindquistCoordinates(trs, x1v, x2v, x3v, &r, &theta, &phi);
+      GetBoyerLindquistCoordinates(trs.spin, x1v, x2v, x3v, &r, &theta, &phi);
       Real sin_theta = sin(theta);
       Real cos_theta = cos(theta);
       Real sin_phi = sin(phi);
@@ -1446,27 +1437,6 @@ static Real CalculateCovariantUT(struct torus_pgen pgen, Real r, Real sin_theta,
 }
 
 //----------------------------------------------------------------------------------------
-// Function for returning corresponding Boyer-Lindquist coordinates of point
-// Inputs:
-//   x1,x2,x3: global coordinates to be converted
-// Outputs:
-//   pr,ptheta,pphi: variables pointed to set to Boyer-Lindquist coordinates
-
-KOKKOS_INLINE_FUNCTION
-static void GetBoyerLindquistCoordinates(struct torus_pgen pgen,
-                                         Real x1, Real x2, Real x3,
-                                         Real *pr, Real *ptheta, Real *pphi) {
-  Real rad = sqrt(SQR(x1) + SQR(x2) + SQR(x3));
-  Real r = fmax((sqrt( SQR(rad) - SQR(pgen.spin) + sqrt(SQR(SQR(rad)-SQR(pgen.spin))
-                      + 4.0*SQR(pgen.spin)*SQR(x3)) ) / sqrt(2.0)), 1.0);
-  *pr = r;
-  *ptheta = (fabs(x3/r) < 1.0) ? acos(x3/r) : acos(copysign(1.0, x3));
-  *pphi = atan2(r*x2-pgen.spin*x1, pgen.spin*x2+r*x1) -
-          pgen.spin*r/(SQR(r)-2.0*r+SQR(pgen.spin));
-  return;
-}
-
-//----------------------------------------------------------------------------------------
 // Function for computing 4-velocity components at a given position inside tilted torus
 // Inputs:
 //   r: Boyer-Lindquist r
@@ -1752,7 +1722,7 @@ KOKKOS_INLINE_FUNCTION
 Real A1(struct torus_pgen pgen, Real x1, Real x2, Real x3) {
   // BL coordinates
   Real r, theta, phi;
-  GetBoyerLindquistCoordinates(pgen, x1, x2, x3, &r, &theta, &phi);
+  GetBoyerLindquistCoordinates(pgen.spin, x1, x2, x3, &r, &theta, &phi);
 
   // calculate vector potential in spherical KS
   Real atheta, aphi;
@@ -1773,7 +1743,7 @@ KOKKOS_INLINE_FUNCTION
 Real A2(struct torus_pgen pgen, Real x1, Real x2, Real x3) {
   // BL coordinates
   Real r, theta, phi;
-  GetBoyerLindquistCoordinates(pgen, x1, x2, x3, &r, &theta, &phi);
+  GetBoyerLindquistCoordinates(pgen.spin, x1, x2, x3, &r, &theta, &phi);
 
   // calculate vector potential in spherical KS
   Real atheta, aphi;
@@ -1794,7 +1764,7 @@ KOKKOS_INLINE_FUNCTION
 Real A3(struct torus_pgen pgen, Real x1, Real x2, Real x3) {
   // BL coordinates
   Real r, theta, phi;
-  GetBoyerLindquistCoordinates(pgen, x1, x2, x3, &r, &theta, &phi);
+  GetBoyerLindquistCoordinates(pgen.spin, x1, x2, x3, &r, &theta, &phi);
 
   // calculate vector potential in spherical KS
   Real atheta, aphi;
@@ -1806,98 +1776,6 @@ Real A3(struct torus_pgen pgen, Real x1, Real x2, Real x3) {
 
   return atheta*(((1.0+SQR(pgen.spin/r))*SQR(x3)-sqrt_term)*isin_term/(r*sqrt_term)) +
          aphi*(pgen.spin*x3/(r*sqrt_term));
-}
-
-
-//----------------------------------------------------------------------------------------
-// Function to initialize kinetic (i.e. 3 velocity components) particles.
-
-KOKKOS_INLINE_FUNCTION
-static void InjectKineticPrtcls( Real x1, Real x2, Real x3, Real * u, Real * b,
-                       Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
-                       bool is_mnkwsk, Real bh_a, bool set_radius) {
-    // u is contravariant in normal frame
-    Real u_aux[3];
-    Real gu[4][4], gl[4][4];
-    ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
-    Real alpha = sqrt(-1.0/gu[0][0]);
-    if (set_radius) {
-      Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
-            + 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
-            + 2.0*gl[3][2]*b[2]*b[1];
-      Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-            + 2.0*gl[3][2]*u[2]*u[1];
-      u0 = sqrt(u0 + massive); // Lorentz factor in FIDO/normal frame
-      // Lower indeces on velocity for scalar product with magnetic field
-      u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-      u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-      u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-      for (int ii = 0; ii<3; ++ii)
-        u_aux[ii] /= u0; // Get three-velocity 
-      Real v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
-      for (int ii = 0; ii<3; ++ii) {
-        u_aux[ii] = u[ii]/u0 - v_norm*b[ii]; // Get perpendicular velocity
-        u_aux[ii] /= b_norm; // Normalize by magnetic field strength
-      }
-      
-      v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
-            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
-            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-      Real r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
-      Real fact = (r_larmor > this_en) ? 0.95 : 1.05;
-      Real ggll = (r_larmor > this_en) ? 1.0 : -1.0;
-      while (ggll*r_larmor > ggll*this_en) {
-        u[0] *= fact;
-        u[1] *= fact;
-        u[2] *= fact;
-        u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
-              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
-              + 2.0*gl[3][2]*u[2]*u[1];
-        u0 = sqrt(u0 + massive);
-        u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-        u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-        u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-        for (int ii = 0; ii<3; ++ii)
-          u_aux[ii] /= u0;
-        v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
-        for (int ii = 0; ii<3; ++ii) {
-          u_aux[ii] = u[ii]/u0 - v_norm*b[ii];
-          u_aux[ii] /= b_norm;
-        }
-        
-        v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
-              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
-              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-        r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
-      }
-      for (int ii = 0; ii<3; ++ii)
-        u_aux[ii] = u[ii];
-    } else {
-      for (int ii = 0; ii<3; ++ii)
-        u_aux[ii] = u[ii];
-      Real u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
-            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
-            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-      u0 = sqrt(u0 + massive)/alpha; 
-      Real fact = (u0 > this_en) ? 0.95 : 1.05;
-      Real ggll = (u0 > this_en) ? 1.0 : -1.0;
-      while (ggll*u0 > ggll*this_en) {
-        u_aux[0] *= fact;
-        u_aux[1] *= fact;
-        u_aux[2] *= fact;
-        u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
-              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
-              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
-        u0 = sqrt(u0 + massive)/alpha; 
-      }
-    }
-    // Velocity was contravariant in FIDO/normal frame
-    // Lower indeces on velocity.
-    // Covariant velocity in FIDO and coordinate frame match
-    u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
-    u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
-    u[2] = gl[3][1]*u_aux[0] + gl[3][2]*u_aux[1] + gl[3][3]*u_aux[2];
 }
 
 } // namespace

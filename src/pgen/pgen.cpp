@@ -724,7 +724,7 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
         }
         headeroffset += prtcl_offset; 
       }
-      std::cout << "Rank: " << global_variable::my_rank << " got " << pcount << " from rst file." << std::endl;
+      // std::cout << "Rank: " << global_variable::my_rank << " got " << pcount << " particles from rst file." << std::endl;
       ppart->nprtcl_thispack = pcount;  
       auto &pr = ppart->prtcl_rdata;
       Kokkos::realloc(pr, ppart->nrdata, pcount);

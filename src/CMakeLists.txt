@@ -102,6 +102,7 @@ add_executable(
 
         particles/hamiltonian_gr.hpp
         particles/particles_helpers.hpp
+        particles/particles_injection.hpp
         particles/gca_gr.cpp
         particles/gr_pushers.cpp
         particles/particles.cpp
