@@ -18,7 +18,7 @@
 //! \fn  void GetUpperAdmMetric
 //  \brief
 KOKKOS_INLINE_FUNCTION
-void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
+static void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
 	for (int i1 = 0; i1 < 3; ++i1 ){ 
 		for (int i2 = 0; i2 < 3; ++i2 ){ 
 		outputMat[i1][i2] = inputMat[i1+1][i2+1] - inputMat[0][i2+1]*inputMat[i1+1][0]/inputMat[0][0];
@@ -30,7 +30,7 @@ void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
 //! \fn  void ComputeDeterminant3
 //  \brief Compute the determinant of a 3x3 matrix
 KOKKOS_INLINE_FUNCTION
-void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
+static void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
 
 	determinant = inputMat[0][0]*inputMat[1][1]*inputMat[2][2] + inputMat[0][1]*inputMat[1][2]*inputMat[2][0]
 		+ inputMat[1][0]*inputMat[2][1]*inputMat[0][2]
@@ -43,7 +43,7 @@ void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
 //! \fn  void ComputeInverseMatrix3
 //  \brief Compute the inverse of a 3x3 matrix
 KOKKOS_INLINE_FUNCTION
-void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
+static void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
 
 	Real determinant = 0.0;
 	ComputeDeterminant3( inputMat, determinant );
@@ -65,7 +65,7 @@ void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
 //! \fn  void InterpolateFields
 //  \brief Interpolate cell field to particle location,
 KOKKOS_INLINE_FUNCTION
-void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, const DvceEdgeFld4D<Real> &e0_,
+static void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, const DvceEdgeFld4D<Real> &e0_,
 				const DualArray1D<RegionSize> &mbsize, const RegionIndcs &indcs, const int m,
 			  Real * E, Real * B, bool &out_of_bounds ){
 
@@ -195,7 +195,7 @@ void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, co
 //! \fn  void LUDecomposition
 //  \brief Compute matrix to use as Lower and Upper triangular decomposition in matrix inversion
 KOKKOS_INLINE_FUNCTION
-void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fail ){
+static void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fail ){
 
     for (int i = 0; i<ndim; ++i)
       perm[i] = i;
@@ -237,7 +237,7 @@ void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fail ){
 //! \fn  void FWDSubstitution
 //  \brief First step of the inversion
 KOKKOS_INLINE_FUNCTION
-void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * idArr, Real * outArr) {
+static void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * idArr, Real * outArr) {
 
     for (int i = 0; i < ndim; ++i) {
         Real sum = 0.0;
@@ -254,7 +254,7 @@ void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const
 //! \fn  void BWDSubstitution
 //  \brief Second step of the inversion
 KOKKOS_INLINE_FUNCTION
-void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * inArr, Real * outArr) {
+static void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * inArr, Real * outArr) {
 
     for (int i = ndim-1; i >= 0; --i) {
         Real sum = 0.0;
@@ -270,7 +270,7 @@ void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const
 //! \fn  void InvertMatrix
 //  \brief Compute the inverse of an nxn matrix as a 1D array. the input should also be a 1D representation of the matrix
 KOKKOS_INLINE_FUNCTION
-void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat, bool &fail ){
+static void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat, bool &fail ){
 
   // Because ndim is determined at runtime
   // Use 1D arrays and deal manually with column/row
@@ -306,4 +306,96 @@ void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat, bo
 
   return;
 }
+
+//----------------------------------------------------------------------------------------
+// Function to initialize kinetic (i.e. 3 velocity components) particles.
+
+KOKKOS_INLINE_FUNCTION
+static void InjectKineticPrtcl( Real x1, Real x2, Real x3, Real * u, Real * b,
+                       Real massive, Real q_o_m, Real this_en, Real max_en, Real min_en,
+                       bool is_mnkwsk, Real bh_a, bool set_radius) {
+    // u is contravariant in normal frame
+    Real u_aux[3];
+    Real gu[4][4], gl[4][4];
+    ComputeMetricAndInverse( x1, x2, x3, is_mnkwsk, bh_a, gl, gu); 
+    Real alpha = sqrt(-1.0/gu[0][0]);
+    if (set_radius) {
+      Real b_norm = gl[1][1]*SQR(b[0]) + gl[2][2]*SQR(b[1]) + gl[3][3]*SQR(b[2])
+            + 2.0*gl[1][2]*b[0]*b[1] + 2.0*gl[1][3]*b[0]*b[2]
+            + 2.0*gl[3][2]*b[2]*b[1];
+      Real u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+            + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+            + 2.0*gl[3][2]*u[2]*u[1];
+      u0 = sqrt(u0 + massive); // Lorentz factor in FIDO/normal frame
+      // Lower indeces on velocity for scalar product with magnetic field
+      u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+      u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+      u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+      for (int ii = 0; ii<3; ++ii)
+        u_aux[ii] /= u0; // Get three-velocity 
+      Real v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
+      for (int ii = 0; ii<3; ++ii) {
+        u_aux[ii] = u[ii]/u0 - v_norm*b[ii]; // Get perpendicular velocity
+        u_aux[ii] /= b_norm; // Normalize by magnetic field strength
+      }
+      
+      v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+      Real r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
+      Real fact = (r_larmor > this_en) ? 0.95 : 1.05;
+      Real ggll = (r_larmor > this_en) ? 1.0 : -1.0;
+      while (ggll*r_larmor > ggll*this_en) {
+        u[0] *= fact;
+        u[1] *= fact;
+        u[2] *= fact;
+        u0 = gl[1][1]*SQR(u[0]) + gl[2][2]*SQR(u[1]) + gl[3][3]*SQR(u[2])
+              + 2.0*gl[1][2]*u[0]*u[1] + 2.0*gl[1][3]*u[0]*u[2]
+              + 2.0*gl[3][2]*u[2]*u[1];
+        u0 = sqrt(u0 + massive);
+        u_aux[0] = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+        u_aux[1] = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+        u_aux[2] = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+        for (int ii = 0; ii<3; ++ii)
+          u_aux[ii] /= u0;
+        v_norm = b[0]*u_aux[0] + b[1]*u_aux[1] + b[2]*u_aux[2];
+        for (int ii = 0; ii<3; ++ii) {
+          u_aux[ii] = u[ii]/u0 - v_norm*b[ii];
+          u_aux[ii] /= b_norm;
+        }
+        
+        v_norm = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+        r_larmor = sqrt(v_norm)*u0/q_o_m/sqrt(b_norm); // Larmor radius computed with perpendicular 4-velocity
+      }
+      for (int ii = 0; ii<3; ++ii)
+        u_aux[ii] = u[ii];
+    } else {
+      for (int ii = 0; ii<3; ++ii)
+        u_aux[ii] = u[ii];
+      Real u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+            + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+            + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+      u0 = sqrt(u0 + massive)/alpha; 
+      Real fact = (u0 > this_en) ? 0.95 : 1.05;
+      Real ggll = (u0 > this_en) ? 1.0 : -1.0;
+      while (ggll*u0 > ggll*this_en) {
+        u_aux[0] *= fact;
+        u_aux[1] *= fact;
+        u_aux[2] *= fact;
+        u0 = gl[1][1]*SQR(u_aux[0]) + gl[2][2]*SQR(u_aux[1]) + gl[3][3]*SQR(u_aux[2])
+              + 2.0*gl[1][2]*u_aux[0]*u_aux[1] + 2.0*gl[1][3]*u_aux[0]*u_aux[2]
+              + 2.0*gl[3][2]*u_aux[2]*u_aux[1];
+        u0 = sqrt(u0 + massive)/alpha; 
+      }
+    }
+    // Velocity was contravariant in FIDO/normal frame
+    // Lower indeces on velocity.
+    // Covariant velocity in FIDO and coordinate frame match
+    u[0] = gl[1][1]*u_aux[0] + gl[1][2]*u_aux[1] + gl[1][3]*u_aux[2];
+    u[1] = gl[2][1]*u_aux[0] + gl[2][2]*u_aux[1] + gl[2][3]*u_aux[2];
+    u[2] = gl[3][1]*u_aux[0] + gl[3][2]*u_aux[1] + gl[3][3]*u_aux[2];
+}
+
 #endif

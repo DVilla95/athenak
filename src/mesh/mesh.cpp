@@ -654,7 +654,7 @@ void Mesh::AddCoordinatesAndPhysics(ParameterInput *pinput) {
   // Determine total number of particles across all ranks
   particles::Particles *ppart = pmb_pack->ppart;
   if (ppart != nullptr) {
-    const bool inject_particles = pinput->GetOrAddBoolean("particles", "inject", false);
+    const bool inject_particles = pinput->GetOrAddBoolean("particles", "inject_at_restart", false);
     if (inject_particles) { //Only assign tags if you're injecting new particles, otherwise get from restart
       nprtcl_thisrank = 0;
       for (int n=0; n<nmb_packs_thisrank; ++n) {

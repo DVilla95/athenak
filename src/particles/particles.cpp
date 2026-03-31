@@ -92,6 +92,50 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
     std::exit(EXIT_FAILURE);
   }
 
+  // select injection criterium
+  std::string prtcl_inj = pin->GetOrAddString("particles","injection_method","random");
+  if (prtcl_inj.compare("random") == 0) {
+    injection_method = InjectionMethod::random;
+  } else if (prtcl_inj.compare("shell") == 0) {
+    if ( (! pin->DoesParameterExist("particles", "r_init_max")) 
+      || (! pin->DoesParameterExist("particles", "r_init_min")) ) 
+    {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+        << "Particle initialization type " << prtcl_inj <<" missing requires both parameters: r_init_max and r_init_min" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    crit_max = pin->GetReal("particles", "r_init_max");
+    crit_min = pin->GetReal("particles", "r_init_min"); 
+    injection_method = InjectionMethod::radius;
+  } else if (prtcl_inj.compare("density") == 0) {
+    if ( ! pin->DoesParameterExist("particles", "rho_condition") ) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+        << "Particle initialization type " << prtcl_inj <<" missing requires parameter: rho_condition" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    crit_min = pin->GetReal("particles", "rho_condition");
+    injection_method = InjectionMethod::density_threshold;
+  } else {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+              << "Particle injection method not recognized." <<std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+  
+  // select initialization method
+  init_by_radius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
+  std::string prtcl_init = pin->GetOrAddString("particles","init_method","random");
+  init_min = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
+  init_max = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
+  if (prtcl_init.compare("random") == 0) {
+    init_method = InitMethod::random;
+  } else if (prtcl_init.compare("flow_align") == 0) {
+    init_method = InitMethod::flow_align;
+  } else {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+              << "Particle initialization method not recognized." <<std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+
   // set dimensions of particle arrays. Note particles only work in 2D/3D
   if (pmy_pack->pmesh->one_d) {
     std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl

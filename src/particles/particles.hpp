@@ -29,6 +29,12 @@ enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, 
 // constants that enumerate ParticleTypes
 enum class ParticleType {cosmic_ray};
 
+// constants that enumerate InjectionCriterium
+enum class InjectionMethod {random, radius, density_threshold, current_sheet};
+
+// constants that enumerate InitCriterium
+enum class InitMethod {random, flow_align};
+
 //----------------------------------------------------------------------------------------
 //! \struct ParticlesTaskIDs
 //  \brief container to hold TaskIDs of all particles tasks
@@ -78,6 +84,11 @@ class Particles {
   Real prtcl_cost; // "Cost factor" for load balancing
 
   ParticlesPusher pusher;
+  InjectionMethod injection_method;
+  InitMethod init_method;
+  Real crit_max, crit_min;
+  Real init_max, init_min;
+  bool init_by_radius;
 
   // Boundary communication buffers and functions for particles
   ParticlesBoundaryValues *pbval_part;
@@ -105,6 +116,10 @@ class Particles {
   void HamiltonianGeodesicsIterations( const Real dt );
   void GRLorentzIterations( const Real dt );
   void GCAIterations( const Real dt );
+
+  // injection/initialization functions
+  void SelectMBsForInjection(DvceArray1D<bool> mb_inj, bool * met_crit);
+  void InitializePrtcls(const DvceArray1D<bool> mb_inj);
 
  private:
   MeshBlockPack* pmy_pack;  // ptr to MeshBlockPack containing this Particles
