@@ -1,5 +1,5 @@
 //========================================================================================
-// AthenaXXX astrophysical plasma code
+ // AthenaXXX astrophysical plasma code
 // Copyright(C) 2020 James M. Stone <jmstone@ias.edu> and the Athena code team
 // Licensed under the 3-clause BSD License (the "LICENSE")
 //========================================================================================
@@ -281,7 +281,7 @@ void Mesh::BuildTreeFromScratch(ParameterInput *pin) {
       }
     } else {
       std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
-        << std::endl << "With AMR maximum number of MeshBlocks per rank must be "
+        << std::endl << "With SMR/AMR maximum number of MeshBlocks per rank must be "
         << "specified in input file using <mesh_refinement>/max_nmb_per_rank"
         << std::endl;
       std::exit(EXIT_FAILURE);

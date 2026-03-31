@@ -58,7 +58,8 @@ MeshRefinement::MeshRefinement(Mesh *pm, ParameterInput *pin) :
     // read interval (in cycles) between check of AMR and derefinement
     ncyc_check_amr = pin->GetOrAddReal("mesh_refinement", "ncycle_check", 1);
     refinement_interval = pin->GetOrAddInteger("mesh_refinement", "refinement_interval", 5);
-    ncyc_check_lb = pin->GetOrAddInteger("mesh_refinement", "ncycle_check_loadbalance", static_cast<int>(1e+12));
+    ncyc_check_lb = pin->GetOrAddInteger("mesh_refinement", "ncycle_check_loadbalance", static_cast<int>(1e+9));
+    std::cout << ncyc_check_lb << std::endl;
     // read prolongate primitives flag
     if (pin->DoesParameterExist("mesh_refinement", "prolong_primitives")) {
       prolong_prims = pin->GetBoolean("mesh_refinement", "prolong_primitives");

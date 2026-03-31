@@ -541,10 +541,11 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
               << " cycle=" << pm->ncycle
               << " time=" << pm->time << " dt=" << pm->dt;
     if (pm->pmb_pack->ppart != nullptr) {
+      int num = std::min(1,pm->nfails_prtcl); // If zero fails, this will catch it, otherwise show rate
       std::cout << std::endl << std::fixed << std::setprecision(1)
                 << "     particles=" << pm->nprtcl_total
                 << " iterations(avg)=" << pm->avg_iter_prtcl
-                << " fail-rate=1/" << pm->nprtcl_total/(std::max(1,pm->nfails_prtcl));
+                << " fail-rate=" << num << "/" << pm->nprtcl_total/(std::max(1,pm->nfails_prtcl));
     }
     std::cout << std::endl;
   }
