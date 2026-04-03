@@ -96,6 +96,7 @@ class MeshRefinement {
 #endif
 
   // functions
+  void ResetRefineFlag();
   void CheckForRefinement(MeshBlockPack* pmbp);
   void AdaptiveMeshRefinement(Driver *pdrive, ParameterInput *pin, bool check_balance);
   void UpdateMeshBlockTree(int &nnew, int &ndel);

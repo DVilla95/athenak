@@ -119,6 +119,21 @@ MeshRefinement::~MeshRefinement() {
 }
 
 //----------------------------------------------------------------------------------------
+//! \fn void MeshRefinement::ResetRefineFlag()
+//! \brief Simple driver function for adaptive mesh refinement
+
+void MeshRefinement::ResetRefineFlag() {
+  // reallocate and zero refine_flag in host space and sync with device
+  Kokkos::realloc(refine_flag, pmy_mesh->nmb_total);
+  for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
+    refine_flag.h_view(m) = 0;
+  }
+  refine_flag.template modify<HostMemSpace>();
+  refine_flag.template sync<DevExeSpace>();
+  return;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn void MeshRefinement::AdaptiveMeshRefinement()
 //! \brief Simple driver function for adaptive mesh refinement
 
@@ -130,6 +145,8 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
   if (!check_balance && is_adaptive) {
     CheckForRefinement(pmy_mesh->pmb_pack);
     UpdateMeshBlockTree(nnew, ndel);
+  } else {
+    ResetRefineFlag(); // Load Balance also uses the refine_flag, though this might be changed later
   }
 
   // then update mesh tree if MeshBlock anywhere (on any rank) is flagged for refinement
@@ -188,14 +205,7 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
 //! pointer in the problem generator.
 
 void MeshRefinement::CheckForRefinement(MeshBlockPack* pmbp) {
-  // reallocate and zero refine_flag in host space and sync with device
-  Kokkos::realloc(refine_flag, pmy_mesh->nmb_total);
-  for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
-    refine_flag.h_view(m) = 0;
-  }
-  refine_flag.template modify<HostMemSpace>();
-  refine_flag.template sync<DevExeSpace>();
-
+  ResetRefineFlag();
   // increment cycle counter for each MB
   for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
     ncyc_since_ref(m) += 1;
@@ -746,9 +756,10 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   // clean-up and return
   delete [] newtoold;
   delete [] oldtonew;
-  if (has_prtcls)
+  if (has_prtcls) {
     delete [] gather_ppmb;
     delete [] prtcls_per_mb_this;
+  }
 
   // Step 11.
   // Recalculate ADM variables if necessary.
