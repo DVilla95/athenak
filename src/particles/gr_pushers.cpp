@@ -628,16 +628,16 @@ void Particles::GRLorentzIterations( const Real dt ){
       InterpolateFields(x_init, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       GRLorentz_Terms(x_init, v_init, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
       for (int i = 0; i<3; ++i) {
-        x_mid[i] = x_init[i] + 0.5*dt*(RHS_eval_x[i]);
-        v_mid[i] = v_init[i] + 0.5*dt*(RHS_eval_v[i]);
+        x_mid[i] = x_init[i] + 0.5*dt*RHS_eval_x[i];
+        v_mid[i] = v_init[i] + 0.5*dt*RHS_eval_v[i];
       }
       GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
       GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
       InterpolateFields(x_mid, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
       for (int i = 0; i<3; ++i) {
-        x_eval[i] = x_init[i] + dt*(RHS_eval_x[i]);
-        v_eval[i] = v_init[i] + dt*(RHS_eval_v[i]);
+        x_eval[i] = x_init[i] + dt*RHS_eval_x[i];
+        v_eval[i] = v_init[i] + dt*RHS_eval_v[i];
       }
     }
     pr(IPVX,p) = v_eval[0];
@@ -649,12 +649,13 @@ void Particles::GRLorentzIterations( const Real dt ){
     aux_n_iter += n_iter;
     max_n_iter = std::fmax(max_n_iter, n_iter);
   }, Kokkos::Sum<int>(avg_iter), Kokkos::Max<int>(tot_max_iter), Kokkos::Sum<int>(tot_n_fails));
-  fail_num = tot_n_fails;
   if (nprtcl_thispack > 0) { average_iteration_number = static_cast<Real>(avg_iter)/nprtcl_thispack; }
   else { 
     average_iteration_number = 0.0; 
     tot_max_iter = 0;
+    tot_n_fails = 0;
   }
+  fail_num = tot_n_fails;
   max_iteration_number = tot_max_iter;
   return;
 }

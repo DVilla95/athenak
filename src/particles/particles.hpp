@@ -118,7 +118,7 @@ class Particles {
   void GCAIterations( const Real dt );
 
   // injection/initialization functions
-  void SelectMBsForInjection(DvceArray1D<bool> mb_inj, bool * met_crit);
+  void SelectMBsForInjection(DvceArray1D<bool> &mb_inj, bool * met_crit);
   void InitializePrtcls(const DvceArray1D<bool> mb_inj);
 
  private:

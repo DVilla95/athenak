@@ -334,6 +334,7 @@ void ParticleRstOutput::LoadOutputData(Mesh *pm) {
 void ParticleRstOutput::WriteOutputFile(Mesh *pm, ParameterInput *pin) {
   int big_end = IsBigEndian(); // =1 on big endian machine
   bool is_gca = pm->pmb_pack->ppart->is_gca;
+  IOWrapperSizeT nprtcl_vars = 8;
 
   // create filename: "vtk/file_basename"."file_id"."XXXXX".part.vtk
   // where XXXXX = 5-digit file_number
@@ -372,33 +373,33 @@ void ParticleRstOutput::WriteOutputFile(Mesh *pm, ParameterInput *pin) {
 
   // Write Part 5: Write (x,y,z) positions and (vx,vy,vz) velocities of prtcls
   // allocate 1D vector of Reals used to convert and output particle data
-  Real *data = new Real[8*npout_thisrank];
+  Real *data = new Real[nprtcl_vars*npout_thisrank];
   // Loop over particles, load positions into data[]
   for (int p=0; p<npout_thisrank; ++p) {
-    data[8*p] = static_cast<Real>(outpart_rdata(IPX,p));
+    data[nprtcl_vars*p] = static_cast<Real>(outpart_rdata(IPX,p));
     if (pm->multi_d) {
-      data[(8*p)+1] = static_cast<Real>(outpart_rdata(IPY,p));
+      data[(nprtcl_vars*p)+1] = static_cast<Real>(outpart_rdata(IPY,p));
     } else {
-      data[(8*p)+1] = static_cast<Real>(pm->mesh_size.x2min);
+      data[(nprtcl_vars*p)+1] = static_cast<Real>(pm->mesh_size.x2min);
     }
     if (pm->three_d) {
-      data[(8*p)+2] = static_cast<Real>(outpart_rdata(IPZ,p));
+      data[(nprtcl_vars*p)+2] = static_cast<Real>(outpart_rdata(IPZ,p));
     } else {
-      data[(8*p)+2] = static_cast<Real>(pm->mesh_size.x3min);
+      data[(nprtcl_vars*p)+2] = static_cast<Real>(pm->mesh_size.x3min);
     }
-    data[8*p+3] = static_cast<Real>(outpart_rdata(IPVX,p));
+    data[nprtcl_vars*p+3] = static_cast<Real>(outpart_rdata(IPVX,p));
     if (pm->multi_d) {
-      data[(8*p)+4] = static_cast<Real>(outpart_rdata(IPVY,p));
+      data[(nprtcl_vars*p)+4] = static_cast<Real>(outpart_rdata(IPVY,p));
     } else {
-      data[(8*p)+4] = static_cast<Real>(pm->mesh_size.x2min);
+      data[(nprtcl_vars*p)+4] = static_cast<Real>(pm->mesh_size.x2min);
     }
     if (pm->three_d) {
-      data[(8*p)+5] = static_cast<Real>(outpart_rdata(IPVZ,p));
+      data[(nprtcl_vars*p)+5] = static_cast<Real>(outpart_rdata(IPVZ,p));
     } else {
-      data[(8*p)+5] = static_cast<Real>(pm->mesh_size.x3min);
+      data[(nprtcl_vars*p)+5] = static_cast<Real>(pm->mesh_size.x3min);
     }
-    data[(8*p)+6] = static_cast<Real>(outpart_idata(PGID,p));
-    data[(8*p)+7] = static_cast<Real>(outpart_idata(PTAG,p));
+    data[(nprtcl_vars*p)+6] = static_cast<Real>(outpart_idata(PGID,p));
+    data[(nprtcl_vars*p)+7] = static_cast<Real>(outpart_idata(PTAG,p));
   }
   // swap data for this variable into big endian order
   if (!big_end) {
@@ -415,28 +416,28 @@ void ParticleRstOutput::WriteOutputFile(Mesh *pm, ParameterInput *pin) {
   // Write particle positions and velocities
   {
     std::size_t datasize = sizeof(Real);
-    std::size_t myoffset=header_offset + 8*rank_offset[global_variable::my_rank]*datasize;
+    std::size_t myoffset=header_offset + nprtcl_vars*rank_offset[global_variable::my_rank]*datasize;
     // collective writes for minimum number of particles across ranks
-    if (partfile.Write_any_type_at_all(&(data[0]),8*npout_min,myoffset,"Real")
-          != 8*npout_min) {
+    if (partfile.Write_any_type_at_all(&(data[0]),nprtcl_vars*npout_min,myoffset,"Real")
+          != nprtcl_vars*npout_min) {
       std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
           << std::endl << "particle data not written correctly to rst particle file, "
           << "rst file is broken." << std::endl;
       exit(EXIT_FAILURE);
     }
     // individual writes for remaining particles on each rank
-    myoffset += datasize*8*npout_min;
+    myoffset += datasize*nprtcl_vars*npout_min;
     int nremain = pm->nprtcl_thisrank - npout_min;
     if (nremain > 0) {
-      if (partfile.Write_any_type_at(&(data[8*npout_min]),8*nremain,myoffset,"Real")
-            != 8*nremain) {
+      if (partfile.Write_any_type_at(&(data[nprtcl_vars*npout_min]),nprtcl_vars*nremain,myoffset,"Real")
+            != nprtcl_vars*nremain) {
         std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
             << std::endl << "particle data not written correctly to rst particle file, "
             << "rst file is broken." << std::endl;
         exit(EXIT_FAILURE);
       }
     }
-    header_offset += 8*pm->nprtcl_total*datasize;
+    header_offset += nprtcl_vars*pm->nprtcl_total*datasize;
   }
 
   // close the output file and clean up

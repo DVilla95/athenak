@@ -129,12 +129,6 @@ void RefineRestart(MeshBlockPack *pmbp) {
   int nmb           = pmbp->nmb_thispack;
   int mbs           = pmesh->gids_eachrank[global_variable::my_rank];
   auto &refine_flag = pmesh->pmr->refine_flag;
-  auto &indcs       = pmesh->mb_indcs;
-  int &is = indcs.is, nx1 = indcs.nx1;
-  int &js = indcs.js, nx2 = indcs.nx2;
-  int &ks = indcs.ks, nx3 = indcs.nx3;
-  const int nkji = nx3 * nx2 * nx1;
-  const int nji  = nx2 * nx1;
 
   par_for_outer(
   "MHDRefineRestart", DevExeSpace(), 0, 0, 0, (nmb - 1),
