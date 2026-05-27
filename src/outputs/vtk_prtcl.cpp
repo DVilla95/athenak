@@ -401,10 +401,6 @@ void ParticleRstOutput::WriteOutputFile(Mesh *pm, ParameterInput *pin) {
     data[(nprtcl_vars*p)+6] = static_cast<Real>(outpart_idata(PGID,p));
     data[(nprtcl_vars*p)+7] = static_cast<Real>(outpart_idata(PTAG,p));
   }
-  // swap data for this variable into big endian order
-  if (!big_end) {
-    for (int i=0; i<(nprtcl_vars*npout_thisrank); ++i) { Swap4Bytes(&data[i]); }
-  }
   // calculate local data offset
   std::vector<int> rank_offset(global_variable::nranks, 0);
   int npout_min = pm->nprtcl_eachrank[0];
