@@ -388,8 +388,9 @@ void Particles::GRLorentzIterations( const Real dt ){
     bool invert_mat_fail = false; // Make sure Jacobians don't become singular
     Real x_save[3], v_save[3];
     const Real scales[6] = { 
-      std::abs(x_init[0]), std::abs(x_init[1]), std::abs(x_init[2]),
-      std::abs(v_init[0]), std::abs(v_init[1]), std::abs(v_init[2])
+      std::fmax(1.0, std::abs(x_init[0])), std::fmax(1.0, std::abs(x_init[1])), 
+      std::fmax(1.0, std::abs(x_init[2])), std::fmax(1.0, std::abs(v_init[0])), 
+      std::fmax(1.0, std::abs(v_init[1])), std::fmax(1.0, std::abs(v_init[2]))
     };
     Real scaled_update_x[3] = {0.0};
     Real scaled_update_v[3] = {0.0};
@@ -448,17 +449,17 @@ void Particles::GRLorentzIterations( const Real dt ){
 
       x_grad[dir] = x_eval[dir] + x_step;
       x_grad[i1] = x_eval[i1]; x_grad[i2] = x_eval[i2];
-      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x1);
-      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v1);
+      GRRHSPosition(x_grad, v_mid, is_minkowski, spin, RHS_grad_x1);
+      GRRHSVelocity(x_grad, v_mid, is_minkowski, spin, RHS_grad_v1);
       InterpolateFields(x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       if (out_of_bounds) {break;}
-      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+      GRLorentz_Terms(x_grad, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
       x_grad[dir] = x_eval[dir] - x_step;
-      GRRHSPosition(x_grad, v_eval, is_minkowski, spin, RHS_grad_x2);
-      GRRHSVelocity(x_grad, v_eval, is_minkowski, spin, RHS_grad_v2);
+      GRRHSPosition(x_grad, v_mid, is_minkowski, spin, RHS_grad_x2);
+      GRRHSVelocity(x_grad, v_mid, is_minkowski, spin, RHS_grad_v2);
       InterpolateFields(x_grad, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
       if (out_of_bounds) {break;}
-      GRLorentz_Terms(x_grad, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+      GRLorentz_Terms(x_grad, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
       for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
         Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*x_step);
         Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*x_step);
@@ -483,13 +484,13 @@ void Particles::GRLorentzIterations( const Real dt ){
 
         v_grad[dir] = v_eval[dir] + v_step;
         v_grad[i1] = v_eval[i1]; v_grad[i2] = v_eval[i2];
-        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x1);
-        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v1);
-        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
+        GRRHSPosition(x_mid, v_grad, is_minkowski, spin, RHS_grad_x1);
+        GRRHSVelocity(x_mid, v_grad, is_minkowski, spin, RHS_grad_v1);
+        GRLorentz_Terms(x_mid, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v1);
         v_grad[dir] = v_eval[dir] - v_step;
-        GRRHSPosition(x_eval, v_grad, is_minkowski, spin, RHS_grad_x2);
-        GRRHSVelocity(x_eval, v_grad, is_minkowski, spin, RHS_grad_v2);
-        GRLorentz_Terms(x_eval, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
+        GRRHSPosition(x_mid, v_grad, is_minkowski, spin, RHS_grad_x2);
+        GRRHSVelocity(x_mid, v_grad, is_minkowski, spin, RHS_grad_v2);
+        GRLorentz_Terms(x_mid, v_grad, E, B, is_minkowski, spin, q_over_m, RHS_grad_v2);
         for (int i=0; i<3; ++i) { // Here Jacobian is for full system, position + velocity
           Jacob[full_idx][i] = -(RHS_grad_x1[i] - RHS_grad_x2[i])*dt/(2.0*v_step);
           Jacob[full_idx][i+3] = -(RHS_grad_v1[i] - RHS_grad_v2[i])*dt/(2.0*v_step);
@@ -593,8 +594,8 @@ void Particles::GRLorentzIterations( const Real dt ){
         }
         GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
         for (int i=0; i<3; ++i) {
-          res[i]   = damp_f*(x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
-          res[i+3] = damp_f*(v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+          res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+          res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
         }
         for (int i=0; i<6; ++i) {res[i] /= scales[i];}
         resnorm = 0.0;
