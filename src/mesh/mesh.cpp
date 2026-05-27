@@ -654,13 +654,13 @@ void Mesh::AddCoordinatesAndPhysics(ParameterInput *pinput) {
   // Determine total number of particles across all ranks
   particles::Particles *ppart = pmb_pack->ppart;
   if (ppart != nullptr) {
+    nprtcl_eachrank = new int[global_variable::nranks];
     const bool inject_particles = pinput->GetOrAddBoolean("particles", "inject_at_restart", false);
     if (inject_particles) { //Only assign tags if you're injecting new particles, otherwise get from restart
       nprtcl_thisrank = 0;
       for (int n=0; n<nmb_packs_thisrank; ++n) {
         nprtcl_thisrank += pmb_pack->ppart->nprtcl_thispack;
       }
-      nprtcl_eachrank = new int[global_variable::nranks];
       nprtcl_eachrank[global_variable::my_rank] = nprtcl_thisrank;
 #if MPI_PARALLEL_ENABLED
       // Share number of particles on each rank with all ranks
@@ -670,9 +670,7 @@ void Mesh::AddCoordinatesAndPhysics(ParameterInput *pinput) {
         nprtcl_total += nprtcl_eachrank[n];
       }
       // Assign particle IDs
-      if (pmb_pack->ppart != nullptr) {
-        pmb_pack->ppart->CreateParticleTags(pinput);
-      }
+      pmb_pack->ppart->CreateParticleTags(pinput);
     }
   }
 }
@@ -686,7 +684,6 @@ void Mesh::UpdatePrtclInfo() {
   for (int n=0; n<nmb_packs_thisrank; ++n) {
     nprtcl_thisrank += pmb_pack->ppart->nprtcl_thispack;
   }
-  nprtcl_eachrank = new int[global_variable::nranks];
   nprtcl_eachrank[global_variable::my_rank] = nprtcl_thisrank;
 #if MPI_PARALLEL_ENABLED
   // Share number of particles on each rank with all ranks
