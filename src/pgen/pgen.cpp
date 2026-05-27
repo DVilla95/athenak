@@ -692,54 +692,63 @@ ProblemGenerator::ProblemGenerator(ParameterInput *pin, Mesh *pm, IOWrapper resf
       // Loop through particles and save particles that belong to rank
       headeroffset = loc + 11;
       prtclrstfile.Seek(headeroffset, single_file_per_rank);
-      std::vector<std::vector<Real>> tmp_real = std::vector<std::vector<Real>>();
-      std::vector<std::vector<int>> tmp_int = std::vector<std::vector<int>>();
-      IOWrapperSizeT prtcl_vars = 8;
-      IOWrapperSizeT prtcl_offset = 8*sizeof(Real);
+      std::vector<std::vector<Real>>  tmp_real  = std::vector<std::vector<Real>>();
+      std::vector<std::vector<int>>   tmp_int   = std::vector<std::vector<int>>();
+      IOWrapperSizeT nprtcl_vars = 8;
       int pcount = 0;
       int gids = pm->pmb_pack->gids;
       int gide = pm->pmb_pack->gide;
       std::vector<Real> all_prtcls = std::vector<Real>();
-      all_prtcls.reserve(8*prtcls_from_rst);
-      prtclrstfile.Read_Reals_at_all(all_prtcls.data(), prtcl_vars*prtcls_from_rst, headeroffset,
+      all_prtcls.reserve(nprtcl_vars*prtcls_from_rst);
+      prtclrstfile.Read_Reals_at_all(all_prtcls.data(), nprtcl_vars*prtcls_from_rst, headeroffset,
                                     single_file_per_rank);
       prtclrstfile.Close();
-      Real this_prtcl[8] = {0.0};
+      std::vector<Real> this_prtcl = std::vector<Real>(nprtcl_vars, 0.0);
       for (int ip=0; ip<prtcls_from_rst; ++ip) {
-        for (int iv=0; iv<8; ++iv)
-          this_prtcl[iv] = all_prtcls[ip*8 + iv];
+        for (int iv=0; iv<nprtcl_vars; ++iv) {this_prtcl[iv] = all_prtcls[ip*nprtcl_vars + iv];}
         if ( (gids <= this_prtcl[6]) && (this_prtcl[6] <= gide) ) {
           tmp_real.push_back( std::vector<Real>() );
-          for (int i=0; i<6; ++i)
-            tmp_real[pcount].push_back( this_prtcl[i] );
+          for (int i=0; i<6; ++i) {tmp_real[pcount].push_back( this_prtcl[i] );}
           tmp_int.push_back( std::vector<int>() );
-          for (int i=0; i<2; ++i)
-            tmp_int[pcount].push_back( static_cast<int>(this_prtcl[i+6]) );
-          //for (int j=0; j<6; ++j)
-          //  std::cout << tmp_real[pcount][j] << " ";
-          //for (int j=0; j<2; ++j)
-          //  std::cout << tmp_int[pcount][j] << " ";
-          //std::cout << std::endl;
+          for (int i=0; i<2; ++i) {tmp_int[pcount].push_back( static_cast<int>(this_prtcl[i+6]) );}
           ++pcount;
         }
-        headeroffset += prtcl_offset; 
       }
-      // std::cout << "Rank: " << global_variable::my_rank << " got " << pcount << " particles from rst file." << std::endl;
+
       ppart->nprtcl_thispack = pcount;  
+
+      HostArray2D<Real> fromrst_rdata; // Arrays used to mirror from host to device
+      HostArray2D<int>  fromrst_idata;
+
+      Kokkos::realloc(fromrst_rdata, ppart->nrdata, pcount);
+      Kokkos::realloc(fromrst_idata, ppart->nidata, pcount);
+      for (int ip=0; ip<pcount; ++ip) {
+        fromrst_rdata(IPX ,ip) = tmp_real[ip][0];
+        fromrst_rdata(IPY ,ip) = tmp_real[ip][1];
+        fromrst_rdata(IPZ ,ip) = tmp_real[ip][2];
+        fromrst_rdata(IPVX,ip) = tmp_real[ip][3];
+        fromrst_rdata(IPVY,ip) = tmp_real[ip][4];
+        fromrst_rdata(IPVZ,ip) = tmp_real[ip][5];
+        fromrst_idata(PGID,ip) = tmp_int[ip][0];
+        fromrst_idata(PTAG,ip) = tmp_int[ip][1];
+      }
+
       auto &pr = ppart->prtcl_rdata;
       Kokkos::realloc(pr, ppart->nrdata, pcount);
       auto &pi = ppart->prtcl_idata;
       Kokkos::realloc(pi, ppart->nidata, pcount);
-      for (int ip=0; ip<pcount; ++ip) {
-        pr(IPX,ip) = tmp_real[ip][0];
-        pr(IPY,ip) = tmp_real[ip][1];
-        pr(IPZ,ip) = tmp_real[ip][2];
-        pr(IPVX,ip) = tmp_real[ip][3];
-        pr(IPVY,ip) = tmp_real[ip][4];
-        pr(IPVZ,ip) = tmp_real[ip][5];
-        pi(PGID,ip) = tmp_int[ip][0];
-        pi(PTAG,ip) = tmp_int[ip][1];
-      }
+      // Create mirror view on device of host view of restart particle real/int data
+      // Specify the execution space from which the mirror view must be accessible
+      auto d_fromrst_rdata = Kokkos::create_mirror_view(DevExeSpace(), fromrst_rdata);
+      auto d_fromrst_idata = Kokkos::create_mirror_view(DevExeSpace(), fromrst_idata);
+      // Copy particle data from host to device mirror array
+      Kokkos::deep_copy(d_fromrst_rdata, fromrst_rdata);
+      Kokkos::deep_copy(d_fromrst_idata, fromrst_idata);
+      // Copy particle positions into device mirrors
+      Kokkos::deep_copy(ppart->prtcl_rdata, d_fromrst_rdata);
+      Kokkos::deep_copy(ppart->prtcl_idata, d_fromrst_idata);
+
+      pm->UpdatePrtclInfo();
     }
   }
 
