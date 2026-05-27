@@ -1046,7 +1046,7 @@ void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
   auto &nprt_del = ppart->pbval_part->nprtcl_destroy;
   nprt_del = 0;
   auto &nprtcl_this = ppart->nprtcl_thispack;
-  Kokkos::realloc(psendl, static_cast<int>(0.8*nprtcl_this)); // Load balance can end up moving more than half the particles on a rank
+  Kokkos::realloc(psendl, static_cast<int>(nprtcl_this)); // Load balance can end up moving all the particles on a rank
   if (nprtcl_this == 0) {
     nprt_send = 0;
   } else {
@@ -1063,8 +1063,10 @@ void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
     Kokkos::deep_copy(dvce_oldtonew, aux_view);
     par_for("part_loadbalance",DevExeSpace(),0,(nprtcl_this-1), KOKKOS_LAMBDA(const int p) {
       int m = pi(PGID,p);
-      if ( (dvce_new_rank_eachmb(m) != gv_myrank) || (dvce_oldtonew(m) != m) )
-        UpdateGIDLB(pi(PGID,p),dvce_new_rank_eachmb(m),gv_myrank,dvce_oldtonew(m),&atom_count(),psendl,p);
+      int new_m = dvce_oldtonew(m);
+      int new_rank = dvce_new_rank_eachmb(new_m);
+      if ( (new_rank != gv_myrank) || (new_m != m) )
+        UpdateGIDLB(pi(PGID,p),new_rank,gv_myrank,new_m,&atom_count(),psendl,p);
     });
     Kokkos::deep_copy(counter, atom_count);
     nprt_send = counter;
