@@ -396,24 +396,22 @@ void Particles::GRLorentzIterations( const Real dt ){
     Real scaled_update_v[3] = {0.0};
 
     GRRHSPosition(x_init, v_init, is_minkowski, spin, RHS_eval_x);
-    x_eval[0] = x_init[0] + dt*(RHS_eval_x[0]) ;
-    x_eval[1] = x_init[1] + dt*(RHS_eval_x[1]) ;
-    x_eval[2] = x_init[2] + dt*(RHS_eval_x[2]) ;
     GRRHSVelocity(x_init, v_init, is_minkowski, spin, RHS_eval_v);
     InterpolateFields(x_init, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
     GRLorentz_Terms(x_init, v_init, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
-    v_eval[0] = v_init[0] + dt*(RHS_eval_v[0]) ;
-    v_eval[1] = v_init[1] + dt*(RHS_eval_v[1]) ;
-    v_eval[2] = v_init[2] + dt*(RHS_eval_v[2]) ;
     for (int i = 0; i<3; ++i) {
-      x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
-      v_mid[i] = 0.5*(v_eval[i] + v_init[i]);
+      x_eval[i] = x_init[i] + 0.5*dt*RHS_eval_x[i];
+      v_eval[i] = v_init[i] + 0.5*dt*RHS_eval_v[i];
     }
 
-    GRRHSPosition(x_mid, v_mid, is_minkowski, spin, RHS_eval_x);
-    GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
-    InterpolateFields(x_mid, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
-    GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+    GRRHSPosition(x_eval, v_eval, is_minkowski, spin, RHS_eval_x);
+    GRRHSVelocity(x_eval, v_eval, is_minkowski, spin, RHS_eval_v);
+    InterpolateFields(x_eval, b0_, e0_, mbsize, indcs, m, E, B, out_of_bounds);
+    GRLorentz_Terms(x_eval, v_eval, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
+    for (int i = 0; i<3; ++i) {
+      x_eval[i] = x_init[i] + dt*RHS_eval_x[i];
+      v_eval[i] = v_init[i] + dt*RHS_eval_v[i];
+    }
 
     for (int i=0; i<3; ++i) {
       res[i] = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
@@ -432,6 +430,10 @@ void Particles::GRLorentzIterations( const Real dt ){
 
     // Start iterating
     // Using Newton method, thus computing the Jacobian at each iteration
+    for (int i = 0; i<3; ++i) {
+      x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
+      v_mid[i] = 0.5*(v_eval[i] + v_init[i]);
+    }
     do{
     out_of_bounds = false; // Reset check variables
     invert_mat_fail = false;
