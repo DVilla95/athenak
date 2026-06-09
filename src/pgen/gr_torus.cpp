@@ -212,12 +212,16 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       // Define criterium for how to initialize particles
       bool is_crit_satisfied;
       int nmb = (pmbp->nmb_thispack);
-      // Array stores whether or not the Meshblock is viable for particle injection
+      int &ng = indcs.ng;
+      int n1 = indcs.nx1 + 2*ng;
+      int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
+      int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
+      // Array stores whether or not the Cell is viable for particle injection
       // based on criterium
-      DvceArray1D<bool> mb_for_injection;
-      Kokkos::realloc(mb_for_injection, nmb);
+      DvceArray4D<bool> cells_for_injection;
+      Kokkos::realloc(cells_for_injection, nmb, n3, n2, n1);
 
-      pmbp->ppart->SelectMBsForInjection(mb_for_injection, &is_crit_satisfied);
+      pmbp->ppart->SelectCellsForInjection(cells_for_injection, is_crit_satisfied);
 
       if ( !is_crit_satisfied ) {
       // if ( global_variable::my_rank != 1 ) {
@@ -230,7 +234,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         Kokkos::realloc(pi, pmbp->ppart->nidata, 0);
         std::cout << "None of the MBs on rank " << global_variable::my_rank << " satisfy the injection criterium. Deleted particles."<< std::endl;
       } else {
-        pmbp->ppart->InitializePrtcls(mb_for_injection);
+        pmbp->ppart->InitializePrtcls(cells_for_injection);
       }
     }
     pmbp->pmesh->UpdatePrtclInfo();
@@ -1827,6 +1831,7 @@ void TorusFluxes(HistoryData *pdata, Mesh *pm) {
     }
     grids[g]->InterpolateToSphere(nvars, w0_);
 
+    Kokkos::fence();
     // compute fluxes
     for (int n=0; n<grids[g]->nangles; ++n) {
       // extract coordinate data at this angle

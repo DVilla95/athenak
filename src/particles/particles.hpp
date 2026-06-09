@@ -29,12 +29,6 @@ enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, 
 // constants that enumerate ParticleTypes
 enum class ParticleType {cosmic_ray};
 
-// constants that enumerate InjectionCriterium
-enum class InjectionMethod {random, radius, density_threshold, current_sheet};
-
-// constants that enumerate InitCriterium
-enum class InitMethod {random, flow_align};
-
 //----------------------------------------------------------------------------------------
 //! \struct ParticlesTaskIDs
 //  \brief container to hold TaskIDs of all particles tasks
@@ -52,6 +46,26 @@ struct ParticlesTaskIDs {
 };
 
 namespace particles {
+
+struct InjectionParams {
+  Real r_min; // Radii for injection
+  Real r_max;
+  Real theta_min; // Poloidal angles for injection
+  Real theta_max;
+  Real phi_min; // Azimuthal angles for injection
+  Real phi_max;
+  Real dens_threshold; // Parameters for injection based on fluid properties
+  Real current_threshold;
+  Real asp_ratio_threshold;
+  Real energy_max; // Parameters for particle energy at injection
+  Real energy_min;
+  int try_lim;
+  bool init_gyroradius; // Initialize based on gyroradius rather than energy
+  bool check_asp_ratio; // For current sheet: need to check also aspect ratio other than magnitude
+  bool check_current; // For current sheet
+  bool check_density; // For density threshold
+  bool flow_align; // For velocity init
+};
 
 //----------------------------------------------------------------------------------------
 //! \class Particles
@@ -84,11 +98,7 @@ class Particles {
   Real prtcl_cost; // "Cost factor" for load balancing
 
   ParticlesPusher pusher;
-  InjectionMethod injection_method;
-  InitMethod init_method;
-  Real crit_max, crit_min;
-  Real init_max, init_min;
-  bool init_by_radius;
+  InjectionParams inject_pars;
 
   // Boundary communication buffers and functions for particles
   ParticlesBoundaryValues *pbval_part;
@@ -118,8 +128,8 @@ class Particles {
   void GCAIterations( const Real dt );
 
   // injection/initialization functions
-  void SelectMBsForInjection(DvceArray1D<bool> &mb_inj, bool * met_crit);
-  void InitializePrtcls(const DvceArray1D<bool> mb_inj);
+  void SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_crit);
+  void InitializePrtcls(const DvceArray4D<bool> &cell_inj);
 
  private:
   MeshBlockPack* pmy_pack;  // ptr to MeshBlockPack containing this Particles

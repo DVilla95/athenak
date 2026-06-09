@@ -11,171 +11,240 @@
 #include "athena.hpp"
 #include "globals.hpp"
 #include "coordinates/cartesian_ks.hpp"
+#include "coordinates/cell_locations.hpp"
 #include "eos/eos.hpp"
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "particles/particles_helpers.hpp"
+#include "diffusion/current_density.hpp"
 
 #include <Kokkos_Random.hpp>
+#include <Kokkos_Core.hpp>
 
 KOKKOS_INLINE_FUNCTION
-static bool IsWithinRegion( const int m, const DualArray1D<RegionSize> &size, const RegionIndcs &indcs,
-          const Real bhspin, const Kokkos::Random_XorShift64_Pool<> *rand_gen, const int try_limit,
-          const Real r_min, const Real r_max, const Real d_min,
-          const DvceArray5D<Real> &wprim,
-          Real * x1v, Real * x2v, Real * x3v ) {
-    auto rand_state = rand_gen->get_state();
-    const int is = indcs.is;
-    const int js = indcs.js;
-    const int ks = indcs.ks;
-    const Real x1min = size.d_view(m).x1min;
-    const Real x1max = size.d_view(m).x1max;
-    const Real x2min = size.d_view(m).x2min;
-    const Real x2max = size.d_view(m).x2max;
-    const Real x3min = size.d_view(m).x3min;
-    const Real x3max = size.d_view(m).x3max;
-    Real r, th, phi;
-    for (int try_mb = 0; try_mb <= try_limit; ++try_mb) {
-      *x1v = x1min + rand_state.frand()*(x1max - x1min);
-      *x2v = x2min + rand_state.frand()*(x2max - x2min); 
-      *x3v = x3min + rand_state.frand()*(x3max - x3min);
-      GetBoyerLindquistCoordinates(bhspin, *x1v, *x2v, *x3v, &r, &th, &phi);
-      bool rad_criterium = (r >= r_min && r <= r_max);
-      int ip = (*x1v - x1min)/size.d_view(m).dx1 + is;
-      int jp = (*x2v - x2min)/size.d_view(m).dx2 + js;
-      int kp = (*x3v - x3min)/size.d_view(m).dx3 + ks;
-      bool dens_criterium = (wprim(m,IDN,kp,jp,ip) > d_min);
-      if ( rad_criterium && dens_criterium) {
-        rand_gen->free_state(rand_state);
-        return true;
+static Real ComputeAspectRatio( const int m, const int k, const int j, const int i,
+          const int ke, const int je, const int ie, const Real j_thr , const Real ar_thr,
+          const DvceArray5D<Real> &bcc_, const DvceArray5D<Real> &j_arr ) {
+    Real npt_perp = 0.0;
+    int k1 = k; int j1 = j; int i1 = i;
+    // Loop only moves forwards
+    while ( j_arr(m,IDN,k1,j1,i1) >= j_thr // absolute value above threshold
+        &&  k1 <= ke && j1 <= je && i1 <= ie ) { // Don't leave meshblock
+      npt_perp+=1.0;
+      // Compute direction perpendicular to both B and J
+      Real c1 = std::abs(
+        bcc_(m,IBY,k1,j1,i1)*j_arr(m,IVZ,k1,j1,i1) - bcc_(m,IBZ,k1,j1,i1)*j_arr(m,IVY,k1,j1,i1)
+      );
+      Real c2 = std::abs(
+        bcc_(m,IBZ,k1,j1,i1)*j_arr(m,IVX,k1,j1,i1) - bcc_(m,IBX,k1,j1,i1)*j_arr(m,IVZ,k1,j1,i1)
+      );
+      Real c3 = std::abs(
+        bcc_(m,IBX,k1,j1,i1)*j_arr(m,IVY,k1,j1,i1) - bcc_(m,IBY,k1,j1,i1)*j_arr(m,IVX,k1,j1,i1)
+      );
+      // Move in "main" perpendicular direction
+      if (c1 > c2) {
+        if (c2 > c3) {i1++;}
+        else {
+          if (c1 > c3)  {i1++;}
+          else          {k1++;}
+        }
+      } else {
+        if (c1 > c3) {j1++;}
+        else {
+          if (c2 > c3)  {j1++;}
+          else          {k1++;}
+        }
       }
     }
-    rand_gen->free_state(rand_state);
-    return false;
+    if (npt_perp < 4) {return -1.0;} // Position is of no interest
+    Real npt_alng = 0.0;
+    Real aspect_ratio = npt_alng/npt_perp;
+    k1 = k; j1 = j; i1 = i;
+    while ( j_arr(m,IDN,k1,j1,i1) >= j_thr
+        &&  k1 <= ke && j1 <= je && i1 <= ie 
+        && aspect_ratio < ar_thr ) { // If the aspect ratio is large enough stop early
+      npt_alng+=1.0;
+      aspect_ratio = npt_alng/npt_perp;
+      Real c1 = std::abs(j_arr(m,IVX,k1,j1,i1));
+      Real c2 = std::abs(j_arr(m,IVY,k1,j1,i1));
+      Real c3 = std::abs(j_arr(m,IVZ,k1,j1,i1));
+      if (c1 > c2) {
+        if (c2 > c3) {i1++;}
+        else {
+          if (c1 > c3)  {i1++;}
+          else          {k1++;}
+        }
+      } else {
+        if (c1 > c3) {j1++;}
+        else {
+          if (c2 > c3)  {j1++;}
+          else          {k1++;}
+        }
+      }
+    }
+    return aspect_ratio;
+}
+
+KOKKOS_INLINE_FUNCTION
+static void ComputeCurrent( const Real j_thr, const Real thr_val, const int nmb, const CoordData &coord,
+          const DvceFaceFld4D<Real> &bface, const DualArray1D<RegionSize> &size, const RegionIndcs &indcs,
+          DvceArray5D<Real> &j_arr, Real &curr_max ) {
+  const int nmkji = nmb*indcs.nx3*indcs.nx2*indcs.nx1;
+  const int nkji = indcs.nx3*indcs.nx2*indcs.nx1;
+  const int nji  = indcs.nx2*indcs.nx1;
+  const int is = indcs.is;
+  const int js = indcs.js;
+  const int ks = indcs.ks;
+  Kokkos::parallel_reduce("prtcls_computej", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
+  KOKKOS_LAMBDA(const int &idx, Real &max_j) {
+    // compute m,k,j,i indices of thread and call function
+    int m = (idx)/nkji;
+    int k = (idx - m*nkji)/nji;
+    int j = (idx - m*nkji - k*nji)/indcs.nx1;
+    int i = (idx - m*nkji - k*nji - j*indcs.nx1) + is;
+    k += ks;
+    j += js;
+    Real x1min = size.d_view(m).x1min;
+    Real x1max = size.d_view(m).x1max;
+    Real x2min = size.d_view(m).x2min;
+    Real x2max = size.d_view(m).x2max;
+    Real x3min = size.d_view(m).x3min;
+    Real x3max = size.d_view(m).x3max;
+    Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
+    Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
+    Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
+    Real ju1 = 0.0; Real ju2 = 0.0; Real ju3 = 0.0; Real j_abs = 0.0;
+    bool thr_check = true;
+    CurlFC(m, k, j, i, bface, size.d_view(m), ju1, ju2, ju3, thr_val, thr_check);
+    if (thr_check) {
+      Real gu[4][4], gl[4][4];
+      ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
+      Real alpha = sqrt(-1.0/gu[0][0]); // This is an approximation, should get alpha at both locations of B involved in curl
+      Real m3[3][3];
+      GetUpperAdmMetric( gu, m3 );
+      // Determinant of metric needed for vector products
+      Real m3_det; 
+      ComputeDeterminant3( m3, m3_det );
+      m3_det = 1.0/sqrt(m3_det);
+      ju1 *= (m3_det*alpha); ju2 *= (m3_det*alpha); ju3 *= (m3_det*alpha);
+      j_abs = gl[1][1]*SQR(ju1) + gl[2][2]*SQR(ju2) + gl[3][3]*SQR(ju3)
+          + 2.0*gl[1][2]*ju1*ju2 + 2.0*gl[1][3]*ju1*ju3 + 2.0*gl[2][3]*ju2*ju3;
+      j_abs = sqrt(j_abs);
+    }
+    j_arr(m,IVX,k,j,i) = ju1; j_arr(m,IVY,k,j,i) = ju2; j_arr(m,IVZ,k,j,i) = ju3;  
+    j_arr(m,IDN,k,j,i) = j_abs;
+    max_j = std::fmax(max_j,j_abs);
+  }, Kokkos::Max<Real>(curr_max) );
+  return;
 }
 
 namespace particles {
 
-void Particles::SelectMBsForInjection(DvceArray1D<bool> mb_inj, bool * met_crit) {
+void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_crit) {
   // Reset all MBs to false
-  int nmb = pmy_pack->nmb_thispack;
-  par_for("reset_mbs_injection", DevExeSpace(), 0, nmb-1,
-      KOKKOS_LAMBDA( const int &im ) { mb_inj(im) = false; });
+  auto &coord = pmy_pack->pcoord->coord_data;
+  auto &size  = pmy_pack->pmb->mb_size;
+  const int nmb = pmy_pack->nmb_thispack;
+  auto &indcs = pmy_pack->pmesh->mb_indcs;
+  const int &ng = indcs.ng;
+  const int n1 = indcs.nx1 + 2*ng;
+  const int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
+  const int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
+  const int nmkji = nmb*indcs.nx3*indcs.nx2*indcs.nx1;
+  const int nkji = indcs.nx3*indcs.nx2*indcs.nx1;
+  const int nji  = indcs.nx2*indcs.nx1;
+  const int is = indcs.is; const int ie = indcs.ie;
+  const int js = indcs.js; const int je = indcs.je;
+  const int ks = indcs.ks; const int ke = indcs.ke;
+  par_for("reset_cells_injection", DevExeSpace(), 0, nmkji-1,
+      KOKKOS_LAMBDA( const int &idx ) {
+        // compute m,k,j,i indices of thread and call function
+        int m = (idx)/nkji;
+        int k = (idx - m*nkji)/nji;
+        int j = (idx - m*nkji - k*nji)/indcs.nx1;
+        int i = (idx - m*nkji - k*nji - j*indcs.nx1)+is;
+        k+=ks;
+        j+=js;
+        cell_inj(m,k,j,i) = true;
+      });
 
-  // Check which MBs satisfy the criterium for injection
-  // If none, all particles will be removed from this meshblockpack
-  const Real min_rad = min_radius;
-  switch (injection_method) {
-    case InjectionMethod::random:
-      {
-        par_for("reset_mbs_injection", DevExeSpace(), 0, nmb-1,
-            KOKKOS_LAMBDA( const int &im ) { mb_inj(im) = true; });
-        *met_crit = true;
-        break;
-      }
-
-    case InjectionMethod::density_threshold:
-      // If the density in this meshblock pack is everywhere smaller than rho_condition times
-      // the rho_min value you're not in the disk
-      {
-        auto &indcs = pmy_pack->pmesh->mb_indcs;
-        const int &ng = indcs.ng;
-        const int n1 = indcs.nx1 + 2*ng;
-        const int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
-        const int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
-        const int is = indcs.is;
-        const int js = indcs.js;
-        const int ks = indcs.ks;
-        DvceArray5D<Real> u0_, w0_;
-        DvceArray5D<Real> bcc_;
-        if (pmy_pack->phydro != nullptr) {
-          u0_ = pmy_pack->phydro->u0;
-          w0_ = pmy_pack->phydro->w0;
-        } else if (pmy_pack->pmhd != nullptr) {
-          u0_ = pmy_pack->pmhd->u0;
-          w0_ = pmy_pack->pmhd->w0;
-          bcc_ = pmy_pack->pmhd->bcc0;
-          auto &bface_ = pmy_pack->pmhd->b0;
-          pmy_pack->pmhd->peos->ConsToPrim(u0_,bface_,w0_,bcc_,false,0,(n1-1),0,(n2-1),0,(n3-1));
-        }
-        const Real d_max = crit_max;
-        Real dens_max = std::numeric_limits<float>::min();
-        const int nmkji = nmb*indcs.nx3*indcs.nx2*indcs.nx1;
-        const int nkji = indcs.nx3*indcs.nx2*indcs.nx1;
-        const int nji  = indcs.nx2*indcs.nx1;
-        Kokkos::parallel_reduce("pgen_mbp_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
-        KOKKOS_LAMBDA(const int &idx, Real &max_d) {
-          // compute m,k,j,i indices of thread and call function
-          int m = (idx)/nkji;
-          int k = (idx - m*nkji)/nji;
-          int j = (idx - m*nkji - k*nji)/indcs.nx1;
-          int i = (idx - m*nkji - k*nji - j*indcs.nx1) + is;
-          k += ks;
-          j += js;
-          mb_inj(m) = ( mb_inj(m) || ( u0_(m,IDN,k,j,i) > d_max ) );
-          //Find maximum density in this meshblockpack
-          max_d = fmax( u0_(m,IDN,k,j,i), max_d );
-        }, Kokkos::Max<Real>(dens_max) );
-        *met_crit = ( dens_max > d_max );
-        break;
-      }
-
-    case InjectionMethod::radius:
-      // If the density in this meshblock pack is everywhere smaller than rho_condition times
-      // the rho_min value you're not in the disk
-      {
-        const Real r_max = crit_max;
-        const Real r_min = crit_min;
-        Real dens_max = std::numeric_limits<float>::min();
-        int mbs_in_shell = 0;
-        // Initialize particles within a specific spherical shell
-        auto &size  = pmy_pack->pmb->mb_size;
-        auto &coord = pmy_pack->pcoord->coord_data;
-        Real bhspin = coord.bh_spin;
-        Kokkos::parallel_reduce("pgen_mbp_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb),
-        KOKKOS_LAMBDA(const int &m, int &mb_count ) {
-          // Notice the absolute value
-          Real x1min = fabs(size.d_view(m).x1min);
-          Real x1max = fabs(size.d_view(m).x1max);
-          Real x1i = fmin( x1min, x1max );
-          Real x1o = fmax( x1min, x1max );
-          Real x2min = fabs(size.d_view(m).x2min);
-          Real x2max = fabs(size.d_view(m).x2max);
-          Real x2i = fmin( x2min, x2max );
-          Real x2o = fmax( x2min, x2max );
-          Real x3min = fabs(size.d_view(m).x3min);
-          Real x3max = fabs(size.d_view(m).x3max);
-          Real x3i = fmin( x3min, x3max );
-          Real x3o = fmax( x3min, x3max );
-          Real r_i, r_o, th, phi_i, phi_o;
-          GetBoyerLindquistCoordinates(bhspin, x1i, x2i, x3i, &r_i, &th, &phi_i);
-          GetBoyerLindquistCoordinates(bhspin, x1o, x2o, x3o, &r_o, &th, &phi_o);
-          //Determine whether the meshblock with index m has cells within the spherical shell
-          mb_inj(m) = ( mb_inj(m) || ( r_o > r_min && r_i < r_max ) );
-          if ( mb_inj(m) ) { ++mb_count; }
-        }, Kokkos::Sum<int>(mbs_in_shell) );
-        
-        *met_crit = ( mbs_in_shell > 0 );
-        break;
-      }
-    default:
-      break;
+  DvceArray5D<Real> u0_, w0_;
+  DvceArray5D<Real> bcc_, j_;
+  Real curr_max;
+  if (inject_pars.check_density || inject_pars.check_current) {
+    if (pmy_pack->phydro != nullptr) {
+      u0_ = pmy_pack->phydro->u0;
+      w0_ = pmy_pack->phydro->w0;
+    } else if (pmy_pack->pmhd != nullptr) {
+      u0_ = pmy_pack->pmhd->u0;
+      w0_ = pmy_pack->pmhd->w0;
+    }
+    if (inject_pars.check_current) {
+      bcc_ = pmy_pack->pmhd->bcc0;
+      auto &bface_ = pmy_pack->pmhd->b0;
+      pmy_pack->pmhd->peos->ConsToPrim(u0_,bface_,w0_,bcc_,false,0,(n1-1),0,(n2-1),0,(n3-1));
+      const Real thr_val = 1.9999;
+      // Allocation based on w0_ allows to reuse indeces
+      Kokkos::realloc(
+          j_, 
+          w0_.extent(0), w0_.extent(1), w0_.extent(2), w0_.extent(3), w0_.extent(4)
+      );
+      ComputeCurrent(
+          inject_pars.current_threshold, thr_val, nmb, coord, bface_, size, indcs,
+          j_, curr_max
+      );
+    }
   }
+  auto &injp = inject_pars; // Capture for kernel
+  const Real bhspin = coord.bh_spin;
+  Kokkos::parallel_reduce("prtcls_injection_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
+      KOKKOS_LAMBDA( const int &idx, bool &any_cell ) {
+        int m = (idx)/nkji;
+        int k = (idx - m*nkji)/nji;
+        int j = (idx - m*nkji - k*nji)/indcs.nx1;
+        int i = (idx - m*nkji - k*nji - j*indcs.nx1)+is;
+        k+=ks;
+        j+=js;
+        // First check geometry constraints
+        const Real x1min = size.d_view(m).x1min;
+        const Real x1max = size.d_view(m).x1max;
+        const Real x2min = size.d_view(m).x2min;
+        const Real x2max = size.d_view(m).x2max;
+        const Real x3min = size.d_view(m).x3min;
+        const Real x3max = size.d_view(m).x3max;
+        const Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
+        const Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
+        const Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
+        Real r, th, phi;
+        GetBoyerLindquistCoordinates(bhspin, x1v, x2v, x3v, &r, &th, &phi);
+        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.r_min <= r && r <= injp.r_max ) );
+        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.theta_min <= th && th <= injp.theta_max ) );
+        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.phi_min <= phi && phi <= injp.phi_max ) );
+        // Check fluid properties
+        if (injp.check_density) { cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( w0_(m,IDN,k,j,i) > injp.dens_threshold ) ); }
+        if (injp.check_current) { cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( j_(m,IDN,k,j,i)  > injp.current_threshold ) ); }
+        /*if (injp.check_asp_ratio) { 
+            Real aspect_ratio = ComputeAspectRatio( m, k, j, i, ke, je, ie, 
+                injp.current_threshold, injp.asp_ratio_threshold, bcc_, j_ );
+          cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) || ( aspect_ratio  > injp.asp_ratio_threshold ) );
+        }
+        */
+        any_cell |= cell_inj(m,k,j,i); 
+      }, Kokkos::LOr<bool>(met_crit));
+  return;
 }
 
-void Particles::InitializePrtcls(const DvceArray1D<bool> mb_inj) {
+void Particles::InitializePrtcls(const DvceArray4D<bool> &cell_inj) {
+  const int nmb = pmy_pack->nmb_thispack;
   const bool is_gca = is_gca;
-  const bool set_radius = init_by_radius;
+  const bool set_radius = inject_pars.init_gyroradius;
   auto &pr = prtcl_rdata;
   auto &pi = prtcl_idata;
   auto &gids = pmy_pack->gids;
   auto &gide = pmy_pack->gide;
-  const Real min_rad = min_radius;
   const Real q_over_m = charge_over_mass;
   int &npart = nprtcl_thispack;
   auto &size  = pmy_pack->pmb->mb_size;
-  const Real max_en = init_max;
-  const Real min_en = init_min;
   // It will be much more convenient to flip this to check for photons once implemented
   const Real massive = (particle_type == ParticleType::cosmic_ray) ? 1.0 : 0.0;
   auto &coord = pmy_pack->pcoord->coord_data;
@@ -184,9 +253,16 @@ void Particles::InitializePrtcls(const DvceArray1D<bool> mb_inj) {
   const int n1 = indcs.nx1 + 2*ng;
   const int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
   const int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
-  const int is = indcs.is;
-  const int js = indcs.js;
-  const int ks = indcs.ks;
+  const int is = indcs.is; const int ie = indcs.ie;
+  const int js = indcs.js; const int je = indcs.je;
+  const int ks = indcs.ks; const int ke = indcs.ke;
+
+  const bool flow_align = inject_pars.flow_align; // Capture for kernel
+  const int try_lim = inject_pars.try_lim;
+  const Real max_en = inject_pars.energy_max;
+  const Real min_en = inject_pars.energy_min;
+
+  Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
   DvceArray5D<Real> u0_, w0_;
   DvceArray5D<Real> bcc_;
   if (pmy_pack->phydro != nullptr) {
@@ -196,145 +272,65 @@ void Particles::InitializePrtcls(const DvceArray1D<bool> mb_inj) {
     u0_ = pmy_pack->pmhd->u0;
     w0_ = pmy_pack->pmhd->w0;
     bcc_ = pmy_pack->pmhd->bcc0;
-    auto &bface_ = pmy_pack->pmhd->b0;
-    pmy_pack->pmhd->peos->ConsToPrim(u0_,bface_,w0_,bcc_,false,0,(n1-1),0,(n2-1),0,(n3-1));
   }
 
-  const int try_lim = 25;
-  const Real bhspin = coord.bh_spin;
-  Real r_max = std::numeric_limits<float>::max();
-  Real r_min = 0.0;
-  Real d_min = 0.0;
-  if      (injection_method == InjectionMethod::radius) {r_max = crit_max; r_min = crit_min;}
-  else if (injection_method == InjectionMethod::density_threshold) {d_min = crit_min;}
-
-  Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
-
-  switch (init_method) {
-    case InitMethod::random:
-      {
-        par_for("part_init", DevExeSpace(),0,npart-1,
-          KOKKOS_LAMBDA(const int p){
-            int m = 0;
-            Real x1v, x2v, x3v;
-            bool found_mb = false;
-            while(!found_mb){
-              auto prtcl_gen = prtcl_rand.get_state();
-              m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
-              while ( !mb_inj(m) ) {
-                m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
-              }
-              prtcl_rand.free_state(prtcl_gen);
-              found_mb = IsWithinRegion( m, size, indcs, bhspin,
-                            &prtcl_rand, try_lim,
-                            std::fmax(r_min,min_rad), r_max, d_min,
-                            w0_,
-                            &x1v, &x2v, &x3v );
-            } // while(!mb_found)
-            //Actually initialize the particle
-            pi(PGID,p) = gids+m;
-            pr(IPX,p) = x1v; pr(IPY,p) = x2v; pr(IPZ,p) = x3v;
-            const Real x1min = size.d_view(m).x1min;
-            const Real x2min = size.d_view(m).x2min;
-            const Real x3min = size.d_view(m).x3min;
-            int ip = (x1v - x1min)/size.d_view(m).dx1 + is;
-            int jp = (x2v - x2min)/size.d_view(m).dx2 + js;
-            int kp = (x3v - x3min)/size.d_view(m).dx3 + ks;
-            Real u[3], b[3];
-            b[0] = bcc_(m,IBX,kp,jp,ip);  b[1] = bcc_(m,IBY,kp,jp,ip);  b[2] = bcc_(m,IBZ,kp,jp,ip);
-            auto prtcl_gen = prtcl_rand.get_state();
-            u[0] = 0.1*(0.5 - prtcl_gen.frand());
-            u[1] = 0.1*(0.5 - prtcl_gen.frand());
-            u[2] = 0.1*(0.5 - prtcl_gen.frand());
-            Real this_en = min_en + prtcl_gen.frand()*(max_en - min_en);
-            prtcl_rand.free_state(prtcl_gen);
-
-            InjectKineticPrtcl( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
-                               coord.is_minkowski, coord.bh_spin, set_radius );
-            Real gu[4][4], gl[4][4];
-            ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-            Real u_0 = 0.0;
-            for (int i1 = 0; i1 < 3; ++i1 ){ 
-              for (int i2 = 0; i2 < 3; ++i2 ){
-                u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
-              }
-            }
-            if (!is_gca) {
-              pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-              pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-              pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-            } else {
-              pr(IPVX,p) = sqrt(u_0);
-              pr(IPVY,p) = 0.001;
-            }
-        });
-        break;
+  par_for("part_init", DevExeSpace(),0,npart-1,
+    KOKKOS_LAMBDA(const int p){
+      int m = 0; int k = 0; int j = 0; int i = 0;
+      int ntry_outer = 0;
+      bool found_cell = false;
+      auto prtcl_gen = prtcl_rand.get_state();
+      while(!found_cell && ntry_outer < try_lim){
+        m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
+        k = static_cast<int>(prtcl_gen.frand()*(ke-ks)) + ks;
+        j = static_cast<int>(prtcl_gen.frand()*(je-js)) + js;
+        i = static_cast<int>(prtcl_gen.frand()*(ie-is)) + is;
+        found_cell = cell_inj(m,k,j,i);
       }
-    case InitMethod::flow_align:
-      {
-        par_for("part_init", DevExeSpace(),0,npart-1,
-          KOKKOS_LAMBDA(const int p){
-            int m = 0;
-            Real x1v, x2v, x3v;
-            bool found_mb = false;
-            while(!found_mb){
-              auto prtcl_gen = prtcl_rand.get_state();
-              m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
-              while ( !mb_inj[m] ) {
-                m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
-              }
-              prtcl_rand.free_state(prtcl_gen);
-              found_mb = IsWithinRegion( m, size, indcs, bhspin,
-                            &prtcl_rand, try_lim,
-                            std::fmax(r_min,min_rad), r_max, d_min,
-                            w0_,
-                            &x1v, &x2v, &x3v );
-            } // while(!mb_found)
-            pi(PGID,p) = gids+m;
-            pr(IPX,p) = x1v; pr(IPY,p) = x2v; pr(IPZ,p) = x3v;
-            const Real x1min = size.d_view(m).x1min;
-            const Real x2min = size.d_view(m).x2min;
-            const Real x3min = size.d_view(m).x3min;
-            int ip = (x1v - x1min)/size.d_view(m).dx1 + is;
-            int jp = (x2v - x2min)/size.d_view(m).dx2 + js;
-            int kp = (x3v - x3min)/size.d_view(m).dx3 + ks;                  
-            Real u[3], b[3];
-            b[0] = bcc_(m,IBX,kp,jp,ip);  b[1] = bcc_(m,IBY,kp,jp,ip);  b[2] = bcc_(m,IBZ,kp,jp,ip);
-            u[0] = w0_(m,IVX,kp,jp,ip);   u[1] = w0_(m,IVY,kp,jp,ip);   u[2] = w0_(m,IVZ,kp,jp,ip);
-            auto prtcl_gen = prtcl_rand.get_state();
-            if ( fabs(u[0]*u[1]*u[2]) < 1.0E-10 ) { // If fluid velocity is too small, matching this_en can take too long, reset to random
-              u[0] = 0.1*(0.5 - prtcl_gen.frand());
-              u[1] = 0.1*(0.5 - prtcl_gen.frand());
-              u[2] = 0.1*(0.5 - prtcl_gen.frand());
-            }
-            Real this_en = min_en + prtcl_gen.frand()*(max_en - min_en);
-            prtcl_rand.free_state(prtcl_gen);
+      //Actually initialize the particle
+      const Real x1min = size.d_view(m).x1min;
+      const Real x1max = size.d_view(m).x1max;
+      const Real x2min = size.d_view(m).x2min;
+      const Real x2max = size.d_view(m).x2max;
+      const Real x3min = size.d_view(m).x3min;
+      const Real x3max = size.d_view(m).x3max;
+      Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
+      Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
+      Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
+      // Scatter around cell center (still within cell)
+      x1v += (0.5 - prtcl_gen.frand())*size.d_view(m).dx1;
+      x2v += (0.5 - prtcl_gen.frand())*size.d_view(m).dx2;
+      x3v += (0.5 - prtcl_gen.frand())*size.d_view(m).dx3;
+      pi(PGID,p) = gids+m;
+      pr(IPX,p) = x1v; pr(IPY,p) = x2v; pr(IPZ,p) = x3v;
+      Real u[3], b[3];
+      b[0] = bcc_(m,IBX,k,j,i);  b[1] = bcc_(m,IBY,k,j,i);  b[2] = bcc_(m,IBZ,k,j,i);
+      if (flow_align) { u[0] = w0_(m,IVX,k,j,i); u[1] = w0_(m,IVY,k,j,i); u[2] = w0_(m,IVZ,k,j,i);}
+      else { u[0] = 0.1*(0.5 - prtcl_gen.frand()); u[1] = 0.1*(0.5 - prtcl_gen.frand()); u[2] = 0.1*(0.5 - prtcl_gen.frand());}
+      Real this_en = min_en + prtcl_gen.frand()*(max_en - min_en);
+      prtcl_rand.free_state(prtcl_gen);
 
-            InjectKineticPrtcl( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
-                               coord.is_minkowski, coord.bh_spin, set_radius );
-            Real gu[4][4], gl[4][4];
-            ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-            Real u_0 = 0.0;
-            for (int i1 = 0; i1 < 3; ++i1 ){ 
-              for (int i2 = 0; i2 < 3; ++i2 ){
-                u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
-              }
-            }
-            if (!is_gca) {
-              pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
-              pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
-              pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
-            } else {
-              pr(IPVX,p) = sqrt(u_0);
-              pr(IPVY,p) = 0.001;
-            }
-        });
-        break;
+      InjectKineticPrtcl( x1v, x2v, x3v, u, b, massive, q_over_m, this_en, max_en, min_en,
+                         coord.is_minkowski, coord.bh_spin, set_radius );
+      Real gu[4][4], gl[4][4];
+      ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
+      Real u_0 = 0.0;
+      for (int i1 = 0; i1 < 3; ++i1 ){ 
+        for (int i2 = 0; i2 < 3; ++i2 ){
+          u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
+        }
       }
-    default:
-      break;
-  }
+      if (!is_gca) {
+        pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
+        pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
+        pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
+      } else {
+        pr(IPVX,p) = sqrt(u_0);
+        pr(IPVY,p) = 0.001;
+      }
+  });
   std::cout << "Injected " << npart << " particles in rank " << global_variable::my_rank << "." << std::endl;
+  return;
 }
 
 } //namespace

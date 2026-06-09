@@ -62,6 +62,7 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   // select pusher algorithm
 	is_gca = false;
   std::string ppush = pin->GetString("particles","pusher");
+  min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0); // Determines when particles have fallen inside the BH
   if (ppush.compare("drift") == 0) {
     pusher = ParticlesPusher::drift;
   } else if (ppush.compare("boris_gr") == 0) {
@@ -70,20 +71,17 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   } else if (ppush.compare("ham_geo") == 0) {
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
-    min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
     pusher = ParticlesPusher::ham_geo;
   } else if (ppush.compare("imr") == 0) {
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
-    min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
     pusher = ParticlesPusher::imr;
   } else if (ppush.compare("gca_gr") == 0) {
 		is_gca = true;
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);
-    min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0);
     charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
     pusher = ParticlesPusher::gca_gr;
   } else {
@@ -92,44 +90,38 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
     std::exit(EXIT_FAILURE);
   }
 
-  // select injection criterium
-  std::string prtcl_inj = pin->GetOrAddString("particles","injection_method","random");
-  if (prtcl_inj.compare("random") == 0) {
-    injection_method = InjectionMethod::random;
-  } else if (prtcl_inj.compare("shell") == 0) {
-    if ( (! pin->DoesParameterExist("particles", "r_init_max")) 
-      || (! pin->DoesParameterExist("particles", "r_init_min")) ) 
-    {
-      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-        << "Particle initialization type " << prtcl_inj <<" missing requires both parameters: r_init_max and r_init_min" << std::endl;
-      std::exit(EXIT_FAILURE);
-    }
-    crit_max = pin->GetReal("particles", "r_init_max");
-    crit_min = pin->GetReal("particles", "r_init_min"); 
-    injection_method = InjectionMethod::radius;
-  } else if (prtcl_inj.compare("density") == 0) {
-    if ( ! pin->DoesParameterExist("particles", "rho_condition") ) {
-      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-        << "Particle initialization type " << prtcl_inj <<" missing requires parameter: rho_condition" << std::endl;
-      std::exit(EXIT_FAILURE);
-    }
-    crit_min = pin->GetReal("particles", "rho_condition");
-    injection_method = InjectionMethod::density_threshold;
-  } else {
-    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-              << "Particle injection method not recognized." <<std::endl;
-    std::exit(EXIT_FAILURE);
-  }
+  // Initialize struct that gathers all injection parameters after checked that each injection method has the required parameters
+  inject_pars.r_min = fmax(min_radius, pin->GetOrAddReal("particles", "r_init_min", 0.0));
+  inject_pars.r_max = pin->GetOrAddReal("particles", "r_init_max", 1.0e+8);
+  inject_pars.theta_min = 0.0; //TODO: Add logic for restricting poloidal angle at injection
+  inject_pars.theta_max = M_PI; //TODO: Add logic for restricting poloidal angle at injection
+  inject_pars.phi_min = -M_PI; //TODO: Add logic for restricting azimuthal angle at injection
+  inject_pars.phi_max = M_PI; //TODO: Add logic for restricting azimuthal angle at injection
+                                //
+  // Calling "GetOrAdd" permanently adds the parameter to the pin object, and it will be inherited at restart
+  // but this is not necessarily desired behvior, hence approach made a bit more verbose
+  inject_pars.check_density     = (pin->DoesParameterExist("particles", "density_threshold"));
+  if (inject_pars.check_density)  { inject_pars.dens_threshold = pin->GetReal("particles", "density_threshold"); }
+  else                            { inject_pars.dens_threshold = 0.0; }
+  inject_pars.check_current     = (pin->DoesParameterExist("particles", "j_threshold"));
+  if (inject_pars.check_current)  { inject_pars.current_threshold = pin->GetReal("particles", "j_threshold"); }
+  else                            { inject_pars.current_threshold = 0.0; }
+  inject_pars.check_asp_ratio   = (pin->DoesParameterExist("particles", "asp_ratio_threshold"));
+  if (inject_pars.check_asp_ratio)  { inject_pars.asp_ratio_threshold = pin->GetReal("particles", "asp_ratio_threshold"); }
+  else                              { inject_pars.asp_ratio_threshold = 0.0; }
+
+  inject_pars.energy_min = pin->GetOrAddReal("particles", "prtcl_energy_min", 1.0);
+  inject_pars.energy_max = pin->GetOrAddReal("particles", "prtcl_energy_max", 1.1);
+
+  inject_pars.try_lim = 25;
+  inject_pars.init_gyroradius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
   
   // select initialization method
-  init_by_radius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
   std::string prtcl_init = pin->GetOrAddString("particles","init_method","random");
-  init_min = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
-  init_max = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
   if (prtcl_init.compare("random") == 0) {
-    init_method = InitMethod::random;
+    inject_pars.flow_align = false;
   } else if (prtcl_init.compare("flow_align") == 0) {
-    init_method = InitMethod::flow_align;
+    inject_pars.flow_align = true;
   } else {
     std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
               << "Particle initialization method not recognized." <<std::endl;
