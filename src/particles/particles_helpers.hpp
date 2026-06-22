@@ -16,7 +16,7 @@
 //----------------------------------------------------------------------------------------
 //
 //! \fn  void GetUpperAdmMetric
-//  \brief
+//! \brief
 KOKKOS_INLINE_FUNCTION
 static void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
 	for (int i1 = 0; i1 < 3; ++i1 ){ 
@@ -28,7 +28,7 @@ static void GetUpperAdmMetric( const Real inputMat[][4], Real outputMat[][3] ){
 
 //----------------------------------------------------------------------------------------
 //! \fn  void ComputeDeterminant3
-//  \brief Compute the determinant of a 3x3 matrix
+//! \brief Compute the determinant of a 3x3 matrix
 KOKKOS_INLINE_FUNCTION
 static void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
 
@@ -41,7 +41,7 @@ static void ComputeDeterminant3( const Real inputMat[][3], Real &determinant ){
 
 //----------------------------------------------------------------------------------------
 //! \fn  void ComputeInverseMatrix3
-//  \brief Compute the inverse of a 3x3 matrix
+//! \brief Compute the inverse of a 3x3 matrix
 KOKKOS_INLINE_FUNCTION
 static void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3] ){
 
@@ -63,137 +63,160 @@ static void ComputeInverseMatrix3( const Real inputMat[][3], Real outputMat[][3]
 
 //----------------------------------------------------------------------------------------
 //! \fn  void InterpolateFields
-//  \brief Interpolate cell field to particle location,
+//! \brief Interpolate cell field to particle location.
+//! Extension to full-trilinear interpolation done with LLM
+
 KOKKOS_INLINE_FUNCTION
 static void InterpolateFields( const Real * prtcl_x, const DvceFaceFld4D<Real> &b0_, const DvceEdgeFld4D<Real> &e0_,
-				const DualArray1D<RegionSize> &mbsize, const RegionIndcs &indcs, const int m,
-			  Real * E, Real * B, bool &out_of_bounds ){
+                const DualArray1D<RegionSize> &mbsize, const RegionIndcs &indcs, const int m,
+                Real * E, Real * B, bool &out_of_bounds ){
 
-	int ip = (prtcl_x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
-	int jp = (prtcl_x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
-	int kp = (prtcl_x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
-  // Sanity check: sometimes particles can make excessively large steps during NL iterations.
-  // Returning the boolean as false allows to reset the iteration variables without crashing the whole code
-  if (ip < 1 || jp < 1 || kp < 1
-      || ip > (indcs.ie + indcs.ng - 1) || jp > (indcs.je + indcs.ng - 1) || kp > (indcs.ke + indcs.ng - 1) ) {
-    out_of_bounds = true;
-    return;
-  }
-	Real &x1min = mbsize.d_view(m).x1min;
-	Real &x2min = mbsize.d_view(m).x2min;
-	Real &x3min = mbsize.d_view(m).x3min;
-	Real &x1max = mbsize.d_view(m).x1max;
-	Real &x2max = mbsize.d_view(m).x2max;
-	Real &x3max = mbsize.d_view(m).x3max;
-	Real Dx = (x1max - x1min)/indcs.nx1;
-	Real Dy = (x2max - x2min)/indcs.nx2;
-	Real Dz = (x3max - x3min)/indcs.nx3;
+    // Cell index of the cell whose left face contains the particle
+    int ip = (prtcl_x[0] - mbsize.d_view(m).x1min)/mbsize.d_view(m).dx1 + indcs.is;
+    int jp = (prtcl_x[1] - mbsize.d_view(m).x2min)/mbsize.d_view(m).dx2 + indcs.js;
+    int kp = (prtcl_x[2] - mbsize.d_view(m).x3min)/mbsize.d_view(m).dx3 + indcs.ks;
 
-  // x component of E centered along x edge
-	Real x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
-  Real weight;
-	// Interpolate Electric Field at new particle location x1, x2, x3
-  weight = (prtcl_x[0] - x1v)/Dx;
-  bool fwd = (weight > 0); // Particle is in the "upper" half of the cell, interpolate to following X
-  weight = fabs(weight);
-  if (fwd)  { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip+1) - e0_.x1e(m, kp, jp, ip)); }
-  else      { E[0] = e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp, ip-1) - e0_.x1e(m, kp, jp, ip)); }
-  // y and z components of E centered along y and z edge, meaning leftmost in x
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-  weight = (prtcl_x[0] - x1v)/Dx;
-  weight = fabs(weight); // This should be redundant
-  // Only look at "next" index, no need to check which half of the cell
-	E[1] = e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp, ip+1) - e0_.x2e(m, kp, jp, ip));
-	E[2] = e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp, ip+1) - e0_.x3e(m, kp, jp, ip));
+    if (ip < 1 || jp < 1 || kp < 1
+        || ip > (indcs.ie + indcs.ng - 1) || jp > (indcs.je + indcs.ng - 1) || kp > (indcs.ke + indcs.ng - 1) ) {
+        out_of_bounds = true;
+        return;
+    }
 
-  // x component of B centered along yz face
-	x1v = LeftEdgeX(ip, indcs.nx1, x1min, x1max);
-	// Interpolate Magnetic Field at new particle location x1, x2, x3
-  weight = (prtcl_x[0] - x1v)/Dx;
-  weight = fabs(weight);
-  // Only look at "next" index, no need to check which half of the cell
-	B[0] = b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp, ip+1) - b0_.x1f(m, kp, jp, ip));
-	x1v = CellCenterX(ip, indcs.nx1, x1min, x1max);
-  weight = (prtcl_x[0] - x1v)/Dx;
-  fwd = (weight > 0); // Particle is in the "upper" half of the cell, interpolate to following X
-  weight = fabs(weight);
-  if (fwd) {
-    B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip+1) - b0_.x2f(m, kp, jp, ip));
-    B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip+1) - b0_.x3f(m, kp, jp, ip));
-  } else {
-    B[1] = b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp, ip-1) - b0_.x2f(m, kp, jp, ip));
-    B[2] = b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp, ip-1) - b0_.x3f(m, kp, jp, ip));
-  }
+    Real &x1min = mbsize.d_view(m).x1min;
+    Real &x2min = mbsize.d_view(m).x2min;
+    Real &x3min = mbsize.d_view(m).x3min;
+    Real &x1max = mbsize.d_view(m).x1max;
+    Real &x2max = mbsize.d_view(m).x2max;
+    Real &x3max = mbsize.d_view(m).x3max;
+    Real Dx = (x1max - x1min)/indcs.nx1;
+    Real Dy = (x2max - x2min)/indcs.nx2;
+    Real Dz = (x3max - x3min)/indcs.nx3;
 
-  // y component of E centered along y edge
-	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
-  weight = (prtcl_x[1] - x1v)/Dy;
-  fwd = (weight > 0);
-  weight = fabs(weight);
-  if (fwd)  { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp+1, ip) - e0_.x2e(m, kp, jp, ip)); }
-  else      { E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp, jp-1, ip) - e0_.x2e(m, kp, jp, ip)); }
-	x1v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-  weight = (prtcl_x[1] - x1v)/Dy;
-  weight = fabs(weight);
-	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp, jp+1, ip) - e0_.x1e(m, kp, jp, ip));
-	E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp, jp+1, ip) - e0_.x3e(m, kp, jp, ip));
+    // -----------------------------------------------------------------------
+    // Compute weights for both face/edge and cell-center positions
+    // -----------------------------------------------------------------------
+    // Face/left-edge weights: node is at left face of cell ip,jp,kp
+    Real x1L = LeftEdgeX(ip,  indcs.nx1, x1min, x1max);
+    Real x2L = LeftEdgeX(jp,  indcs.nx2, x2min, x2max);
+    Real x3L = LeftEdgeX(kp,  indcs.nx3, x3min, x3max);
+    // wx1f in [0,1]: weight toward ip+1 face
+    Real wx1f = (prtcl_x[0] - x1L)/Dx;
+    Real wx2f = (prtcl_x[1] - x2L)/Dy;
+    Real wx3f = (prtcl_x[2] - x3L)/Dz;
 
-  // y component of B centered along xz face
-	x1v = LeftEdgeX(jp, indcs.nx2, x2min, x2max);
-  weight = (prtcl_x[1] - x1v)/Dy;
-  weight = fabs(weight);
-	B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp, jp+1, ip) - b0_.x2f(m, kp, jp, ip));
-	x1v = CellCenterX(jp, indcs.nx2, x2min, x2max);
-  weight = (prtcl_x[1] - x1v)/Dy;
-  fwd = (weight > 0);
-  weight = fabs(weight);
-  if (fwd) {
-    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp+1, ip) - b0_.x1f(m, kp, jp, ip));
-    B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp+1, ip) - b0_.x3f(m, kp, jp, ip));
-  } else {
-    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp, jp-1, ip) - b0_.x1f(m, kp, jp, ip));
-    B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp, jp-1, ip) - b0_.x3f(m, kp, jp, ip));
-  }
+    // Cell-center weights: need to find which half of the cell we are in
+    Real x1C = CellCenterX(ip, indcs.nx1, x1min, x1max);
+    Real x2C = CellCenterX(jp, indcs.nx2, x2min, x2max);
+    Real x3C = CellCenterX(kp, indcs.nx3, x3min, x3max);
 
-  // z component of E centered along z edge
-	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[2] - x1v)/Dz;
-  fwd = (weight > 0);
-  weight = fabs(weight);
-  if (fwd)  { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp+1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
-  else      { E[2] += e0_.x3e(m, kp, jp, ip) + weight*(e0_.x3e(m, kp-1, jp, ip) - e0_.x3e(m, kp, jp, ip)); }
-	x1v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[2] - x1v)/Dz;
-  weight = fabs(weight);
-	E[0] += e0_.x1e(m, kp, jp, ip) + weight*(e0_.x1e(m, kp+1, jp, ip) - e0_.x1e(m, kp, jp, ip));
-	E[1] += e0_.x2e(m, kp, jp, ip) + weight*(e0_.x2e(m, kp+1, jp, ip) - e0_.x2e(m, kp, jp, ip));
+    // For cell-centered staggering we interpolate between ip and ip+-1
+    // Shift the base index if particle is in the lower half so we always
+    // interpolate between ic and ic+1
+    int ic = ip, jc = jp, kc = kp;
+    Real wx1c = (prtcl_x[0] - x1C)/Dx;
+    Real wx2c = (prtcl_x[1] - x2C)/Dy;
+    Real wx3c = (prtcl_x[2] - x3C)/Dz;
+    if (wx1c < 0.0) { ic -= 1; wx1c += 1.0; }
+    if (wx2c < 0.0) { jc -= 1; wx2c += 1.0; }
+    if (wx3c < 0.0) { kc -= 1; wx3c += 1.0; }
 
-  // z component of B centered along yz face
-	x1v = LeftEdgeX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[2] - x1v)/Dz;
-  weight = fabs(weight);
-	B[2] += b0_.x3f(m, kp, jp, ip) + weight*(b0_.x3f(m, kp+1, jp, ip) - b0_.x3f(m, kp, jp, ip));
-	x1v = CellCenterX(kp, indcs.nx3, x3min, x3max);
-  weight = (prtcl_x[2] - x1v)/Dz;
-  fwd = (weight > 0);
-  weight = fabs(weight);
-  if (fwd) {
-    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp+1, jp, ip) - b0_.x1f(m, kp, jp, ip));
-    B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp+1, jp, ip) - b0_.x2f(m, kp, jp, ip));
-  } else {
-    B[0] += b0_.x1f(m, kp, jp, ip) + weight*(b0_.x1f(m, kp-1, jp, ip) - b0_.x1f(m, kp, jp, ip));
-    B[1] += b0_.x2f(m, kp, jp, ip) + weight*(b0_.x2f(m, kp-1, jp, ip) - b0_.x2f(m, kp, jp, ip));
-  }
-  for (int i = 0; i<3; ++i) {
-    E[i] /= 3.0;
-    B[i] /= 3.0;
-  }
+    // Complement weights
+    Real wx1f_ = 1.0 - wx1f;
+    Real wx2f_ = 1.0 - wx2f;
+    Real wx3f_ = 1.0 - wx3f;
+    Real wx1c_ = 1.0 - wx1c;
+    Real wx2c_ = 1.0 - wx2c;
+    Real wx3c_ = 1.0 - wx3c;
 
+    // -----------------------------------------------------------------------
+    // B1: staggered(x) x cell-center(y) x cell-center(z)
+    //     => trilinear over (ip,ip+1) x (jc,jc+1) x (kc,kc+1)
+    // -----------------------------------------------------------------------
+    B[0] =
+        wx1f_ * wx2c_ * wx3c_ * b0_.x1f(m, kc,   jc,   ip  ) +
+        wx1f  * wx2c_ * wx3c_ * b0_.x1f(m, kc,   jc,   ip+1) +
+        wx1f_ * wx2c  * wx3c_ * b0_.x1f(m, kc,   jc+1, ip  ) +
+        wx1f  * wx2c  * wx3c_ * b0_.x1f(m, kc,   jc+1, ip+1) +
+        wx1f_ * wx2c_ * wx3c  * b0_.x1f(m, kc+1, jc,   ip  ) +
+        wx1f  * wx2c_ * wx3c  * b0_.x1f(m, kc+1, jc,   ip+1) +
+        wx1f_ * wx2c  * wx3c  * b0_.x1f(m, kc+1, jc+1, ip  ) +
+        wx1f  * wx2c  * wx3c  * b0_.x1f(m, kc+1, jc+1, ip+1);
+
+    // -----------------------------------------------------------------------
+    // B2: staggered(y) x cell-center(x) x cell-center(z)
+    //     => trilinear over (ic,ic+1) x (jp,jp+1) x (kc,kc+1)
+    // -----------------------------------------------------------------------
+    B[1] =
+        wx1c_ * wx2f_ * wx3c_ * b0_.x2f(m, kc,   jp,   ic  ) +
+        wx1c  * wx2f_ * wx3c_ * b0_.x2f(m, kc,   jp,   ic+1) +
+        wx1c_ * wx2f  * wx3c_ * b0_.x2f(m, kc,   jp+1, ic  ) +
+        wx1c  * wx2f  * wx3c_ * b0_.x2f(m, kc,   jp+1, ic+1) +
+        wx1c_ * wx2f_ * wx3c  * b0_.x2f(m, kc+1, jp,   ic  ) +
+        wx1c  * wx2f_ * wx3c  * b0_.x2f(m, kc+1, jp,   ic+1) +
+        wx1c_ * wx2f  * wx3c  * b0_.x2f(m, kc+1, jp+1, ic  ) +
+        wx1c  * wx2f  * wx3c  * b0_.x2f(m, kc+1, jp+1, ic+1);
+
+    // -----------------------------------------------------------------------
+    // B3: staggered(z) x cell-center(x) x cell-center(y)
+    //     => trilinear over (ic,ic+1) x (jc,jc+1) x (kp,kp+1)
+    // -----------------------------------------------------------------------
+    B[2] =
+        wx1c_ * wx2c_ * wx3f_ * b0_.x3f(m, kp,   jc,   ic  ) +
+        wx1c  * wx2c_ * wx3f_ * b0_.x3f(m, kp,   jc,   ic+1) +
+        wx1c_ * wx2c  * wx3f_ * b0_.x3f(m, kp,   jc+1, ic  ) +
+        wx1c  * wx2c  * wx3f_ * b0_.x3f(m, kp,   jc+1, ic+1) +
+        wx1c_ * wx2c_ * wx3f  * b0_.x3f(m, kp+1, jc,   ic  ) +
+        wx1c  * wx2c_ * wx3f  * b0_.x3f(m, kp+1, jc,   ic+1) +
+        wx1c_ * wx2c  * wx3f  * b0_.x3f(m, kp+1, jc+1, ic  ) +
+        wx1c  * wx2c  * wx3f  * b0_.x3f(m, kp+1, jc+1, ic+1);
+
+    // -----------------------------------------------------------------------
+    // E1: cell-center(x) x staggered(y) x staggered(z)
+    //     => trilinear over (ic,ic+1) x (jp,jp+1) x (kp,kp+1)
+    // -----------------------------------------------------------------------
+    E[0] =
+        wx1c_ * wx2f_ * wx3f_ * e0_.x1e(m, kp,   jp,   ic  ) +
+        wx1c  * wx2f_ * wx3f_ * e0_.x1e(m, kp,   jp,   ic+1) +
+        wx1c_ * wx2f  * wx3f_ * e0_.x1e(m, kp,   jp+1, ic  ) +
+        wx1c  * wx2f  * wx3f_ * e0_.x1e(m, kp,   jp+1, ic+1) +
+        wx1c_ * wx2f_ * wx3f  * e0_.x1e(m, kp+1, jp,   ic  ) +
+        wx1c  * wx2f_ * wx3f  * e0_.x1e(m, kp+1, jp,   ic+1) +
+        wx1c_ * wx2f  * wx3f  * e0_.x1e(m, kp+1, jp+1, ic  ) +
+        wx1c  * wx2f  * wx3f  * e0_.x1e(m, kp+1, jp+1, ic+1);
+
+    // -----------------------------------------------------------------------
+    // E2: staggered(x) x cell-center(y) x staggered(z)
+    //     => trilinear over (ip,ip+1) x (jc,jc+1) x (kp,kp+1)
+    // -----------------------------------------------------------------------
+    E[1] =
+        wx1f_ * wx2c_ * wx3f_ * e0_.x2e(m, kp,   jc,   ip  ) +
+        wx1f  * wx2c_ * wx3f_ * e0_.x2e(m, kp,   jc,   ip+1) +
+        wx1f_ * wx2c  * wx3f_ * e0_.x2e(m, kp,   jc+1, ip  ) +
+        wx1f  * wx2c  * wx3f_ * e0_.x2e(m, kp,   jc+1, ip+1) +
+        wx1f_ * wx2c_ * wx3f  * e0_.x2e(m, kp+1, jc,   ip  ) +
+        wx1f  * wx2c_ * wx3f  * e0_.x2e(m, kp+1, jc,   ip+1) +
+        wx1f_ * wx2c  * wx3f  * e0_.x2e(m, kp+1, jc+1, ip  ) +
+        wx1f  * wx2c  * wx3f  * e0_.x2e(m, kp+1, jc+1, ip+1);
+
+    // -----------------------------------------------------------------------
+    // E3: staggered(x) x staggered(y) x cell-center(z)
+    //     => trilinear over (ip,ip+1) x (jp,jp+1) x (kc,kc+1)
+    // -----------------------------------------------------------------------
+    E[2] =
+        wx1f_ * wx2f_ * wx3c_ * e0_.x3e(m, kc,   jp,   ip  ) +
+        wx1f  * wx2f_ * wx3c_ * e0_.x3e(m, kc,   jp,   ip+1) +
+        wx1f_ * wx2f  * wx3c_ * e0_.x3e(m, kc,   jp+1, ip  ) +
+        wx1f  * wx2f  * wx3c_ * e0_.x3e(m, kc,   jp+1, ip+1) +
+        wx1f_ * wx2f_ * wx3c  * e0_.x3e(m, kc+1, jp,   ip  ) +
+        wx1f  * wx2f_ * wx3c  * e0_.x3e(m, kc+1, jp,   ip+1) +
+        wx1f_ * wx2f  * wx3c  * e0_.x3e(m, kc+1, jp+1, ip  ) +
+        wx1f  * wx2f  * wx3c  * e0_.x3e(m, kc+1, jp+1, ip+1);
 }
+
 
 //----------------------------------------------------------------------------------------
 //! \fn  void LUDecomposition
-//  \brief Compute matrix to use as Lower and Upper triangular decomposition in matrix inversion
+//! \brief Compute matrix to use as Lower and Upper triangular decomposition in matrix inversion
 KOKKOS_INLINE_FUNCTION
 static void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fail ){
 
@@ -235,7 +258,7 @@ static void LUDecomposition( const int ndim, Real * LUMat, int * perm, bool &fai
 
 //----------------------------------------------------------------------------------------
 //! \fn  void FWDSubstitution
-//  \brief First step of the inversion
+//! \brief First step of the inversion
 KOKKOS_INLINE_FUNCTION
 static void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * idArr, Real * outArr) {
 
@@ -252,7 +275,7 @@ static void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm
 
 //----------------------------------------------------------------------------------------
 //! \fn  void BWDSubstitution
-//  \brief Second step of the inversion
+//! \brief Second step of the inversion
 KOKKOS_INLINE_FUNCTION
 static void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * inArr, Real * outArr) {
 
@@ -268,7 +291,7 @@ static void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm
 
 //----------------------------------------------------------------------------------------
 //! \fn  void InvertMatrix
-//  \brief Compute the inverse of an nxn matrix as a 1D array. the input should also be a 1D representation of the matrix
+//! \brief Compute the inverse of an nxn matrix as a 1D array. the input should also be a 1D representation of the matrix
 KOKKOS_INLINE_FUNCTION
 static void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat, bool &fail ){
 
