@@ -54,6 +54,8 @@ struct InjectionParams {
   Real theta_max;
   Real phi_min; // Azimuthal angles for injection
   Real phi_max;
+  Real x3_min; // For torus problem this injects at specified "height"
+  Real x3_max;
   Real dens_threshold; // Parameters for injection based on fluid properties
   Real current_threshold;
   Real asp_ratio_threshold;

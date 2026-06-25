@@ -93,12 +93,14 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   // Initialize struct that gathers all injection parameters after checked that each injection method has the required parameters
   inject_pars.r_min = fmax(min_radius, pin->GetOrAddReal("particles", "r_init_min", 0.0));
   inject_pars.r_max = pin->GetOrAddReal("particles", "r_init_max", 1.0e+8);
-  inject_pars.theta_min = 0.0; //TODO: Add logic for restricting poloidal angle at injection
-  inject_pars.theta_max = M_PI; //TODO: Add logic for restricting poloidal angle at injection
+  inject_pars.theta_min = pin->GetOrAddReal("particles", "theta_init_min", 0.0);
+  inject_pars.theta_max = pin->GetOrAddReal("particles", "theta_init_max", M_PI);
   inject_pars.phi_min = -M_PI; //TODO: Add logic for restricting azimuthal angle at injection
   inject_pars.phi_max = M_PI; //TODO: Add logic for restricting azimuthal angle at injection
+  inject_pars.x3_min = pin->GetOrAddReal("particles", "x3_init_min", ppack->pmesh->mesh_size.x3min);
+  inject_pars.x3_max = pin->GetOrAddReal("particles", "x3_init_max", ppack->pmesh->mesh_size.x3max);
                                 //
-  // Calling "GetOrAdd" permanently adds the parameter to the pin object, and it will be inherited at restart
+  // Calling "GetOrAdd" permanently adds the parameter to the ParameterInput object, and it will be inherited at restart
   // but this is not necessarily desired behvior, hence approach made a bit more verbose
   inject_pars.check_density     = (pin->DoesParameterExist("particles", "density_threshold"));
   if (inject_pars.check_density)  { inject_pars.dens_threshold = pin->GetReal("particles", "density_threshold"); }

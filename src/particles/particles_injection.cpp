@@ -156,17 +156,6 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
   const int is = indcs.is; const int ie = indcs.ie;
   const int js = indcs.js; const int je = indcs.je;
   const int ks = indcs.ks; const int ke = indcs.ke;
-  par_for("reset_cells_injection", DevExeSpace(), 0, nmkji-1,
-      KOKKOS_LAMBDA( const int &idx ) {
-        // compute m,k,j,i indices of thread and call function
-        int m = (idx)/nkji;
-        int k = (idx - m*nkji)/nji;
-        int j = (idx - m*nkji - k*nji)/indcs.nx1;
-        int i = (idx - m*nkji - k*nji - j*indcs.nx1)+is;
-        k+=ks;
-        j+=js;
-        cell_inj(m,k,j,i) = true;
-      });
 
   DvceArray5D<Real> u0_, w0_;
   DvceArray5D<Real> bcc_, j_;
@@ -217,19 +206,25 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
         const Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
         Real r, th, phi;
         GetBoyerLindquistCoordinates(bhspin, x1v, x2v, x3v, &r, &th, &phi);
-        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.r_min <= r && r <= injp.r_max ) );
-        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.theta_min <= th && th <= injp.theta_max ) );
-        cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( injp.phi_min <= phi && phi <= injp.phi_max ) );
+        bool use_cell = true;
+        use_cell &= ( injp.r_min <= r && r <= injp.r_max );
+        use_cell &= ( injp.x3_min <= fabs(x3v) && fabs(x3v) <= injp.x3_max );
+        bool th_condition = ( injp.theta_min <= th && th <= injp.theta_max );
+        // th_condition |= ( injp.theta_min <= (th+M_PI/2.0) && (th+M_PI/2.0) <= injp.theta_max );
+        th_condition |= ( injp.theta_min <= (M_PI-th) && (M_PI-th) <= injp.theta_max );
+        use_cell &= ( th_condition );
+        use_cell &= ( injp.phi_min <= phi && phi <= injp.phi_max );
         // Check fluid properties
-        if (injp.check_density) { cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( w0_(m,IDN,k,j,i) > injp.dens_threshold ) ); }
-        if (injp.check_current) { cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) && ( j_(m,IDN,k,j,i)  > injp.current_threshold ) ); }
+        if (injp.check_density) { use_cell &= ( w0_(m,IDN,k,j,i) > injp.dens_threshold ); }
+        if (injp.check_current) { use_cell &= ( j_(m,IDN,k,j,i)  > injp.current_threshold ); }
         /*if (injp.check_asp_ratio) { 
             Real aspect_ratio = ComputeAspectRatio( m, k, j, i, ke, je, ie, 
                 injp.current_threshold, injp.asp_ratio_threshold, bcc_, j_ );
-          cell_inj(m,k,j,i) = ( cell_inj(m,k,j,i) || ( aspect_ratio  > injp.asp_ratio_threshold ) );
+          use_cell = ( use_cell || ( aspect_ratio  > injp.asp_ratio_threshold ) );
         }
         */
-        any_cell |= cell_inj(m,k,j,i); 
+        any_cell |= use_cell; 
+        cell_inj(m,k,j,i) = use_cell;
       }, Kokkos::LOr<bool>(met_crit));
   return;
 }
@@ -280,7 +275,7 @@ void Particles::InitializePrtcls(const DvceArray4D<bool> &cell_inj) {
       int ntry_outer = 0;
       bool found_cell = false;
       auto prtcl_gen = prtcl_rand.get_state();
-      while(!found_cell && ntry_outer < try_lim){
+      while(!found_cell && ntry_outer < try_lim) {
         m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
         k = static_cast<int>(prtcl_gen.frand()*(ke-ks)) + ks;
         j = static_cast<int>(prtcl_gen.frand()*(je-js)) + js;
