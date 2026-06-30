@@ -210,7 +210,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     auto &size = pmbp->pmb->mb_size;
     if (inject_particles) {
       // Define criterium for how to initialize particles
-      bool is_crit_satisfied;
+      int num_good_cells;
       int nmb = (pmbp->nmb_thispack);
       int &ng = indcs.ng;
       int n1 = indcs.nx1 + 2*ng;
@@ -218,12 +218,10 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
       // Array stores whether or not the Cell is viable for particle injection
       // based on criterium
-      DvceArray4D<bool> cells_for_injection;
-      Kokkos::realloc(cells_for_injection, nmb, n3, n2, n1);
+      DvceArray2D<int> only_good_cells; // Array holds the m,k,j,i indeces of the cells that can be used to initialize particles
+      pmbp->ppart->SelectCellsForInjection(only_good_cells, num_good_cells);
 
-      pmbp->ppart->SelectCellsForInjection(cells_for_injection, is_crit_satisfied);
-
-      if ( !is_crit_satisfied ) {
+      if ( num_good_cells==0 ) {
       // if ( global_variable::my_rank != 1 ) {
       // }
         auto &pr = pmbp->ppart->prtcl_rdata;
@@ -234,7 +232,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         Kokkos::realloc(pi, pmbp->ppart->nidata, 0);
         std::cout << "None of the MBs on rank " << global_variable::my_rank << " satisfy the injection criterium. Deleted particles."<< std::endl;
       } else {
-        pmbp->ppart->InitializePrtcls(cells_for_injection);
+        pmbp->ppart->InitializePrtcls(only_good_cells, num_good_cells);
       }
     }
     pmbp->pmesh->UpdatePrtclInfo();

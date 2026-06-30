@@ -63,7 +63,6 @@ struct InjectionParams {
   Real temperature_threshold;
   Real energy_max; // Parameters for particle energy at injection
   Real energy_min;
-  int try_lim;
   bool init_gyroradius; // Initialize based on gyroradius rather than energy
   bool check_asp_ratio; // For current sheet: need to check also aspect ratio other than magnitude
   bool check_current; // For current sheet
@@ -134,8 +133,8 @@ class Particles {
   void GCAIterations( const Real dt );
 
   // injection/initialization functions
-  void SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_crit);
-  void InitializePrtcls(const DvceArray4D<bool> &cell_inj);
+  void SelectCellsForInjection(DvceArray2D<int> &cell_inj, int &num_good_cells);
+  void InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &num_good_cells);
 
  private:
   MeshBlockPack* pmy_pack;  // ptr to MeshBlockPack containing this Particles

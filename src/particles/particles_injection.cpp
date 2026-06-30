@@ -20,6 +20,7 @@
 
 #include <Kokkos_Random.hpp>
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
 
 KOKKOS_INLINE_FUNCTION
 static Real ComputeAspectRatio( const int m, const int k, const int j, const int i,
@@ -140,7 +141,7 @@ static void ComputeCurrent( const Real j_thr, const Real thr_val, const int nmb,
 
 namespace particles {
 
-void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_crit) {
+void Particles::SelectCellsForInjection(DvceArray2D<int> &only_good_cells, int &num_good_cells) {
   // Reset all MBs to false
   auto &coord = pmy_pack->pcoord->coord_data;
   auto &size  = pmy_pack->pmb->mb_size;
@@ -156,6 +157,9 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
   const int is = indcs.is; const int ie = indcs.ie;
   const int js = indcs.js; const int je = indcs.je;
   const int ks = indcs.ks; const int ke = indcs.ke;
+
+  DvceArray4D<bool> cells_for_injection;
+  Kokkos::realloc(cells_for_injection, nmb, n3, n2, n1);
 
   DvceArray5D<Real> u0_, w0_;
   DvceArray5D<Real> bcc_, j_;
@@ -196,7 +200,7 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
   auto &injp = inject_pars; // Capture for kernel
   const Real bhspin = coord.bh_spin;
   Kokkos::parallel_reduce("prtcls_injection_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
-      KOKKOS_LAMBDA( const int &idx, bool &any_cell ) {
+      KOKKOS_LAMBDA( const int &idx, int &cell_cnt ) {
         int m = (idx)/nkji;
         int k = (idx - m*nkji)/nji;
         int j = (idx - m*nkji - k*nji)/indcs.nx1;
@@ -274,13 +278,27 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
             use_cell &= ( (pgas/pmag)/avg_beta > injp.beta_threshold ); 
           }
         }
-        any_cell |= use_cell; 
-        cell_inj(m,k,j,i) = use_cell;
-      }, Kokkos::LOr<bool>(met_crit));
+        cells_for_injection(m,k,j,i) = use_cell;
+        if (use_cell) { cell_cnt += 1; }
+      }, Kokkos::Sum<int>(num_good_cells));
+  
+  Kokkos::realloc(only_good_cells, num_good_cells, 4);
+  Kokkos::View<int> good_cell_idx("good_cell_idx");
+  Kokkos::deep_copy(good_cell_idx, 0); // Ensure initialization at 0
+  par_for("part_goodcells", DevExeSpace(),0,nmb-1,ks,ke,js,je,is,ie,
+    KOKKOS_LAMBDA(int m, int k, int j, int i) {
+    if (cells_for_injection(m,k,j,i)) {
+      int cc = Kokkos::atomic_fetch_add(&good_cell_idx(), 1);
+      only_good_cells(cc,0) = m;
+      only_good_cells(cc,1) = k;
+      only_good_cells(cc,2) = j;
+      only_good_cells(cc,3) = i;
+    }
+  });
   return;
 }
 
-void Particles::InitializePrtcls(const DvceArray4D<bool> &cell_inj) {
+void Particles::InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &num_good_cells) {
   const int nmb = pmy_pack->nmb_thispack;
   const bool is_gca = is_gca;
   const bool set_radius = inject_pars.init_gyroradius;
@@ -304,7 +322,6 @@ void Particles::InitializePrtcls(const DvceArray4D<bool> &cell_inj) {
   const int ks = indcs.ks; const int ke = indcs.ke;
 
   const bool flow_align = inject_pars.flow_align; // Capture for kernel
-  const int try_lim = inject_pars.try_lim;
   const Real max_en = inject_pars.energy_max;
   const Real min_en = inject_pars.energy_min;
 
@@ -322,17 +339,13 @@ void Particles::InitializePrtcls(const DvceArray4D<bool> &cell_inj) {
 
   par_for("part_init", DevExeSpace(),0,npart-1,
     KOKKOS_LAMBDA(const int p){
-      int m = 0; int k = 0; int j = 0; int i = 0;
-      int ntry_outer = 0;
-      bool found_cell = false;
       auto prtcl_gen = prtcl_rand.get_state();
-      while(!found_cell && ntry_outer < try_lim) {
-        m = static_cast<int>(prtcl_gen.frand()*(gide-gids));
-        k = static_cast<int>(prtcl_gen.frand()*(ke-ks)) + ks;
-        j = static_cast<int>(prtcl_gen.frand()*(je-js)) + js;
-        i = static_cast<int>(prtcl_gen.frand()*(ie-is)) + is;
-        found_cell = cell_inj(m,k,j,i);
-      }
+      int cc = static_cast<int>(prtcl_gen.frand()*num_good_cells);
+      int m = cell_inj(cc,0);
+      int k = cell_inj(cc,1);
+      int j = cell_inj(cc,2);
+      int i = cell_inj(cc,3);
+
       //Actually initialize the particle
       const Real x1min = size.d_view(m).x1min;
       const Real x1max = size.d_view(m).x1max;
