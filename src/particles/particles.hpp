@@ -56,9 +56,11 @@ struct InjectionParams {
   Real phi_max;
   Real x3_min; // For torus problem this injects at specified "height"
   Real x3_max;
-  Real dens_threshold; // Parameters for injection based on fluid properties
+  Real density_threshold; // Parameters for injection based on fluid properties
   Real current_threshold;
   Real asp_ratio_threshold;
+  Real beta_threshold;
+  Real temperature_threshold;
   Real energy_max; // Parameters for particle energy at injection
   Real energy_min;
   int try_lim;
@@ -66,6 +68,8 @@ struct InjectionParams {
   bool check_asp_ratio; // For current sheet: need to check also aspect ratio other than magnitude
   bool check_current; // For current sheet
   bool check_density; // For density threshold
+  bool check_beta; // For beta threshold
+  bool check_temperature; // For beta threshold
   bool flow_align; // For velocity init
 };
 

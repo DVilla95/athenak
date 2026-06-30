@@ -102,15 +102,21 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
                                 //
   // Calling "GetOrAdd" permanently adds the parameter to the ParameterInput object, and it will be inherited at restart
   // but this is not necessarily desired behvior, hence approach made a bit more verbose
+  inject_pars.density_threshold       = 0.0;
+  inject_pars.current_threshold       = 0.0;
+  inject_pars.asp_ratio_threshold     = 0.0;
+  inject_pars.beta_threshold          = 0.0;
+  inject_pars.temperature_threshold   = 0.0;
   inject_pars.check_density     = (pin->DoesParameterExist("particles", "density_threshold"));
-  if (inject_pars.check_density)  { inject_pars.dens_threshold = pin->GetReal("particles", "density_threshold"); }
-  else                            { inject_pars.dens_threshold = 0.0; }
+  if (inject_pars.check_density)  { inject_pars.density_threshold = pin->GetReal("particles", "density_threshold"); }
   inject_pars.check_current     = (pin->DoesParameterExist("particles", "j_threshold"));
   if (inject_pars.check_current)  { inject_pars.current_threshold = pin->GetReal("particles", "j_threshold"); }
-  else                            { inject_pars.current_threshold = 0.0; }
   inject_pars.check_asp_ratio   = (pin->DoesParameterExist("particles", "asp_ratio_threshold"));
   if (inject_pars.check_asp_ratio)  { inject_pars.asp_ratio_threshold = pin->GetReal("particles", "asp_ratio_threshold"); }
-  else                              { inject_pars.asp_ratio_threshold = 0.0; }
+  inject_pars.check_beta   = (pin->DoesParameterExist("particles", "beta_threshold"));
+  if (inject_pars.check_beta)  { inject_pars.beta_threshold = pin->GetReal("particles", "beta_threshold"); }
+  inject_pars.check_temperature   = (pin->DoesParameterExist("particles", "temperature_threshold"));
+  if (inject_pars.check_temperature)  { inject_pars.temperature_threshold = pin->GetReal("particles", "temperature_threshold"); }
 
   inject_pars.energy_min = pin->GetOrAddReal("particles", "prtcl_energy_min", 1.0);
   inject_pars.energy_max = pin->GetOrAddReal("particles", "prtcl_energy_max", 1.1);

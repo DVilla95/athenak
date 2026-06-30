@@ -160,7 +160,11 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
   DvceArray5D<Real> u0_, w0_;
   DvceArray5D<Real> bcc_, j_;
   Real curr_max;
-  if (inject_pars.check_density || inject_pars.check_current) {
+  bool check_fluid = false;
+  Real gamma_eos;
+  check_fluid |= inject_pars.check_density || inject_pars.check_temperature;
+  check_fluid |= inject_pars.check_current || inject_pars.check_beta;
+  if (check_fluid) {
     if (pmy_pack->phydro != nullptr) {
       u0_ = pmy_pack->phydro->u0;
       w0_ = pmy_pack->phydro->w0;
@@ -168,20 +172,25 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
       u0_ = pmy_pack->pmhd->u0;
       w0_ = pmy_pack->pmhd->w0;
     }
-    if (inject_pars.check_current) {
+    if (inject_pars.check_temperature || inject_pars.check_beta) {
+      gamma_eos = pmy_pack->pmhd->peos->eos_data.gamma;
+    }
+    if (inject_pars.check_current || inject_pars.check_beta) {
       bcc_ = pmy_pack->pmhd->bcc0;
       auto &bface_ = pmy_pack->pmhd->b0;
       pmy_pack->pmhd->peos->ConsToPrim(u0_,bface_,w0_,bcc_,false,0,(n1-1),0,(n2-1),0,(n3-1));
-      const Real thr_val = 1.9999;
-      // Allocation based on w0_ allows to reuse indeces
-      Kokkos::realloc(
-          j_, 
-          w0_.extent(0), w0_.extent(1), w0_.extent(2), w0_.extent(3), w0_.extent(4)
-      );
-      ComputeCurrent(
-          inject_pars.current_threshold, thr_val, nmb, coord, bface_, size, indcs,
-          j_, curr_max
-      );
+      if (inject_pars.check_current) {
+        const Real thr_val = 1.9999;
+        // Allocation based on w0_ allows to reuse indeces
+        Kokkos::realloc(
+            j_, 
+            w0_.extent(0), w0_.extent(1), w0_.extent(2), w0_.extent(3), w0_.extent(4)
+        );
+        ComputeCurrent(
+            inject_pars.current_threshold, thr_val, nmb, coord, bface_, size, indcs,
+            j_, curr_max
+        );
+      }
     }
   }
   auto &injp = inject_pars; // Capture for kernel
@@ -214,15 +223,57 @@ void Particles::SelectCellsForInjection(DvceArray4D<bool> &cell_inj, bool &met_c
         th_condition |= ( injp.theta_min <= (M_PI-th) && (M_PI-th) <= injp.theta_max );
         use_cell &= ( th_condition );
         use_cell &= ( injp.phi_min <= phi && phi <= injp.phi_max );
-        // Check fluid properties
-        if (injp.check_density) { use_cell &= ( w0_(m,IDN,k,j,i) > injp.dens_threshold ); }
-        if (injp.check_current) { use_cell &= ( j_(m,IDN,k,j,i)  > injp.current_threshold ); }
-        /*if (injp.check_asp_ratio) { 
-            Real aspect_ratio = ComputeAspectRatio( m, k, j, i, ke, je, ie, 
-                injp.current_threshold, injp.asp_ratio_threshold, bcc_, j_ );
-          use_cell = ( use_cell || ( aspect_ratio  > injp.asp_ratio_threshold ) );
+        // Check fluid properties if geometric contraints are satisfied
+        if (use_cell) {
+          if (injp.check_density) { use_cell &= ( w0_(m,IDN,k,j,i) > injp.density_threshold ); }
+          if (injp.check_current) { use_cell &= ( j_(m,IDN,k,j,i)  > injp.current_threshold ); }
+          /*if (injp.check_asp_ratio) { 
+              Real aspect_ratio = ComputeAspectRatio( m, k, j, i, ke, je, ie, 
+                  injp.current_threshold, injp.asp_ratio_threshold, bcc_, j_ );
+            use_cell = ( use_cell || ( aspect_ratio  > injp.asp_ratio_threshold ) );
+          }
+          */
+          if (injp.check_temperature) { 
+            Real pgas = (gamma_eos - 1.0)*w0_(m,IEN,k,j,i); // Assumes ideal EOS
+            Real norm_tmprtr = pgas/w0_(m,IDN,k,j,i);
+            use_cell &= ( norm_tmprtr > injp.temperature_threshold ); 
+          }
+          if (injp.check_beta) { 
+            // Check whether the value of beta at a given location is significantly 
+            // larger than the surrounding
+            Real avg_beta = 0.0;
+            Real gu[4][4], gl[4][4];
+            ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
+            const Real alpha2 = fabs(1.0/gu[0][0]);
+            for (int ia = -ng; ia <= ng; ++ia) {
+              for (int ib = -ng; ib <= ng; ++ib) {
+                for (int ic = -ng; ic <= ng; ++ic) {
+                  const int sk = k+ia;
+                  const int sj = j+ib;
+                  const int si = i+ic;
+                  Real aux_pgas = (gamma_eos - 1.0)*w0_(m,IEN,sk,sj,si); // Assumes ideal EOS
+                  Real aux_pmag = SQR(bcc_(m,IBX,sk,sj,si))*gl[1][1] + SQR(bcc_(m,IBY,sk,sj,si))*gl[2][2] 
+                      + SQR(bcc_(m,IBZ,sk,sj,si))*gl[3][3]
+                      + 2.0*bcc_(m,IBX,sk,sj,si)*bcc_(m,IBY,sk,sj,si)*gl[1][2] 
+                      + 2.0*bcc_(m,IBX,sk,sj,si)*bcc_(m,IBZ,sk,sj,si)*gl[1][3]
+                      + 2.0*bcc_(m,IBY,sk,sj,si)*bcc_(m,IBZ,sk,sj,si)*gl[2][3];
+                  aux_pmag *= alpha2;
+                  avg_beta += aux_pgas/aux_pmag;
+                }
+              }
+            }
+            Real pgas = (gamma_eos - 1.0)*w0_(m,IEN,k,j,i); // Assumes ideal EOS
+            Real pmag = SQR(bcc_(m,IBX,k,j,i))*gl[1][1] + SQR(bcc_(m,IBY,k,j,i))*gl[2][2] 
+                  + SQR(bcc_(m,IBZ,k,j,i))*gl[3][3]
+                  + 2.0*bcc_(m,IBX,k,j,i)*bcc_(m,IBY,k,j,i)*gl[1][2] 
+                  + 2.0*bcc_(m,IBX,k,j,i)*bcc_(m,IBZ,k,j,i)*gl[1][3]
+                  + 2.0*bcc_(m,IBY,k,j,i)*bcc_(m,IBZ,k,j,i)*gl[2][3];
+            pmag *= alpha2;
+            avg_beta -= pgas/pmag; // Remove central value to establish "baseline"
+            avg_beta /= (SQR(ng)*ng-1);
+            use_cell &= ( (pgas/pmag)/avg_beta > injp.beta_threshold ); 
+          }
         }
-        */
         any_cell |= use_cell; 
         cell_inj(m,k,j,i) = use_cell;
       }, Kokkos::LOr<bool>(met_crit));
