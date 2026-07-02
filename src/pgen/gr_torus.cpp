@@ -222,8 +222,6 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       pmbp->ppart->SelectCellsForInjection(only_good_cells, num_good_cells);
 
       if ( num_good_cells==0 ) {
-      // if ( global_variable::my_rank != 1 ) {
-      // }
         auto &pr = pmbp->ppart->prtcl_rdata;
         auto &pi = pmbp->ppart->prtcl_idata;
         int &npart = pmbp->ppart->nprtcl_thispack;

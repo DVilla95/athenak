@@ -223,11 +223,10 @@ void Particles::SelectCellsForInjection(DvceArray2D<int> &only_good_cells, int &
         use_cell &= ( injp.r_min <= r && r <= injp.r_max );
         use_cell &= ( injp.x3_min <= fabs(x3v) && fabs(x3v) <= injp.x3_max );
         bool th_condition = ( injp.theta_min <= th && th <= injp.theta_max );
-        // th_condition |= ( injp.theta_min <= (th+M_PI/2.0) && (th+M_PI/2.0) <= injp.theta_max );
         th_condition |= ( injp.theta_min <= (M_PI-th) && (M_PI-th) <= injp.theta_max );
         use_cell &= ( th_condition );
         use_cell &= ( injp.phi_min <= phi && phi <= injp.phi_max );
-        // Check fluid properties if geometric contraints are satisfied
+        // Check fluid properties if geometric constraints are satisfied
         if (use_cell) {
           if (injp.check_density) { use_cell &= ( w0_(m,IDN,k,j,i) > injp.density_threshold ); }
           if (injp.check_current) { use_cell &= ( j_(m,IDN,k,j,i)  > injp.current_threshold ); }
