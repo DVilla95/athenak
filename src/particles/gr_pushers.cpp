@@ -391,8 +391,7 @@ void Particles::GRLorentzIterations( const Real dt ){
       std::fmax(1.0, std::abs(x_init[2])), std::fmax(1.0, std::abs(v_init[0])), 
       std::fmax(1.0, std::abs(v_init[1])), std::fmax(1.0, std::abs(v_init[2]))
     };
-    Real scaled_update_x[3] = {0.0};
-    Real scaled_update_v[3] = {0.0};
+    Real scaled_update_x, scaled_update_v;
 
     GRRHSPosition(x_init, v_init, is_minkowski, spin, RHS_eval_x);
     GRRHSVelocity(x_init, v_init, is_minkowski, spin, RHS_eval_v);
@@ -525,7 +524,6 @@ void Particles::GRLorentzIterations( const Real dt ){
         res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
         res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
       }
-      for (int i=0; i<6; ++i) {res[i] /= scales[i];}
     }
 
     if (out_of_bounds) {
@@ -542,20 +540,21 @@ void Particles::GRLorentzIterations( const Real dt ){
       continue;
     }
 
+    for (int i=0; i<ndim; ++i) {res[i] /= scales[i];}
     resnorm = 0.0;
     for (int i = 0; i<ndim; ++i) { resnorm += SQR(res[i]); }
 
     if (resnorm < resold) {
       // Regular iteration
       for (int i=0; i<3; ++i){
-        scaled_update_x[i] = 0.0;
-        scaled_update_v[i] = 0.0;
+        scaled_update_x = 0.0;
+        scaled_update_v = 0.0;
         for (int j=0; j<6; ++j){
-          scaled_update_x[i] -= invJacob1D[i*ndim + j]*res[j];
-          scaled_update_v[i] -= invJacob1D[(i+3)*ndim + j]*res[j];
+          scaled_update_x -= invJacob1D[i*ndim + j]*res[j];
+          scaled_update_v -= invJacob1D[(i+3)*ndim + j]*res[j];
         }
-        x_eval[i] += scaled_update_x[i]*scales[i];
-        v_eval[i] += scaled_update_v[i]*scales[i+3];
+        x_eval[i] += scaled_update_x*scales[i];
+        v_eval[i] += scaled_update_v*scales[i+3];
       }
       resold = resnorm;
     } else {
@@ -570,14 +569,14 @@ void Particles::GRLorentzIterations( const Real dt ){
         for (int i=0; i<3; ++i){
           x_eval[i] = x_save[i];
           v_eval[i] = v_save[i];
-          scaled_update_x[i] = 0.0;
-          scaled_update_v[i] = 0.0;
+          scaled_update_x = 0.0;
+          scaled_update_v = 0.0;
           for (int j=0; j<6; ++j){
-            scaled_update_x[i] -= damp_f*invJacob1D[i*ndim + j]*res[j];
-            scaled_update_v[i] -= damp_f*invJacob1D[(i+3)*ndim + j]*res[j];
+            scaled_update_x -= damp_f*invJacob1D[i*ndim + j]*res[j];
+            scaled_update_v -= damp_f*invJacob1D[(i+3)*ndim + j]*res[j];
           }
-          x_eval[i] += scaled_update_x[i]*scales[i];
-          v_eval[i] += scaled_update_v[i]*scales[i+3];
+          x_eval[i] += scaled_update_x*scales[i];
+          v_eval[i] += scaled_update_v*scales[i+3];
         }
         for (int i = 0; i<3; ++i) {
           x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
