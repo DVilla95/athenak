@@ -121,7 +121,6 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   inject_pars.energy_min = pin->GetOrAddReal("particles", "prtcl_energy_min", 1.0);
   inject_pars.energy_max = pin->GetOrAddReal("particles", "prtcl_energy_max", 1.1);
 
-  inject_pars.try_lim = 25;
   inject_pars.init_gyroradius = pin->GetOrAddBoolean("particles", "set_gyroradius", false);
   
   // select initialization method
@@ -294,11 +293,10 @@ void Particles::CountPartclsPerMB(int *ppmb) {
   auto &gids = pmy_pack->gids;
   auto &nmb_total = pmy_pack->pmesh->nmb_total;
 
-  for (int m=0; m<pmy_pack->pmesh->nmb_thisrank; ++m)
-    ppmb[m] = 0;
+  for (int m=0; m<pmy_pack->pmesh->nmb_thisrank; ++m) {ppmb[m] = 0;}
 
   for (int p=0; p<nprtcl_thispack; ++p) {
-    int m = pi(PGID,p) - gids; // Take global MB id, rather than local
+    int m = pi(PGID,p) - gids; // Take local MB id, rather than global
     ppmb[m]++;
   }
   return;
