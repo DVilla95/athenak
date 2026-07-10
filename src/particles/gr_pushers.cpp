@@ -486,7 +486,7 @@ void Particles::GRLorentzIterations( const Real dt ){
         else if (dir == 1) { i1 = 0; i2 = 2; }
         else if (dir == 2) { i1 = 0; i2 = 1; }
         v_step = std::fmax(base_v_step, std::abs(v_init[dir]*v_fac*base_v_step));
-        v_step = std::fmin(v_step, std::abs(v_init[dir]*0.1));
+        // v_step = std::fmin(v_step, std::abs(v_init[dir]*0.1));
 
         v_grad[dir] = v_eval[dir] + v_step;
         v_grad[i1] = v_eval[i1]; v_grad[i2] = v_eval[i2];
@@ -520,10 +520,6 @@ void Particles::GRLorentzIterations( const Real dt ){
       GRRHSVelocity(x_mid, v_mid, is_minkowski, spin, RHS_eval_v);
       // InterpolateFields( pi(PTAG,p), x_eval, b0_, e0_, mbsize, indcs, m, E, B );
       GRLorentz_Terms(x_mid, v_mid, E, B, is_minkowski, spin, q_over_m, RHS_eval_v);
-      for (int i=0; i<3; ++i) {
-        res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
-        res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
-      }
     }
 
     if (out_of_bounds) {
@@ -540,9 +536,13 @@ void Particles::GRLorentzIterations( const Real dt ){
       continue;
     }
 
+    for (int i=0; i<3; ++i) {
+      res[i]   = (x_eval[i] - x_init[i] - RHS_eval_x[i]*dt);
+      res[i+3] = (v_eval[i] - v_init[i] - RHS_eval_v[i]*dt);
+    }
     for (int i=0; i<ndim; ++i) {res[i] /= scales[i];}
     resnorm = 0.0;
-    for (int i = 0; i<ndim; ++i) { resnorm += SQR(res[i]); }
+    for (int i = 0; i<ndim; ++i) {resnorm += SQR(res[i]);}
 
     if (resnorm < resold) {
       // Regular iteration
@@ -550,11 +550,11 @@ void Particles::GRLorentzIterations( const Real dt ){
         scaled_update_x = 0.0;
         scaled_update_v = 0.0;
         for (int j=0; j<6; ++j){
-          scaled_update_x -= invJacob1D[i*ndim + j]*res[j];
-          scaled_update_v -= invJacob1D[(i+3)*ndim + j]*res[j];
+          scaled_update_x -= invJacob1D[j*ndim + i]*res[j];
+          scaled_update_v -= invJacob1D[j*ndim + (i+3)]*res[j];
         }
-        x_eval[i] += scaled_update_x*scales[i];
-        v_eval[i] += scaled_update_v*scales[i+3];
+        x_eval[i] += scaled_update_x;
+        v_eval[i] += scaled_update_v;
       }
       resold = resnorm;
     } else {
@@ -572,11 +572,11 @@ void Particles::GRLorentzIterations( const Real dt ){
           scaled_update_x = 0.0;
           scaled_update_v = 0.0;
           for (int j=0; j<6; ++j){
-            scaled_update_x -= damp_f*invJacob1D[i*ndim + j]*res[j];
-            scaled_update_v -= damp_f*invJacob1D[(i+3)*ndim + j]*res[j];
+            scaled_update_x -= damp_f*invJacob1D[j*ndim + i]*res[j];
+            scaled_update_v -= damp_f*invJacob1D[j*ndim + (i+3)]*res[j];
           }
-          x_eval[i] += scaled_update_x*scales[i];
-          v_eval[i] += scaled_update_v*scales[i+3];
+          x_eval[i] += scaled_update_x;
+          v_eval[i] += scaled_update_v;
         }
         for (int i = 0; i<3; ++i) {
           x_mid[i] = 0.5*(x_eval[i] + x_init[i]);
