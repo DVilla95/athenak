@@ -199,8 +199,9 @@ void Particles::SelectCellsForInjection(DvceArray2D<int> &only_good_cells, int &
   }
   auto &injp = inject_pars; // Capture for kernel
   const Real bhspin = coord.bh_spin;
+  const bool ismnkwsk = coord.is_minkowski;
   Kokkos::parallel_reduce("prtcls_injection_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmkji),
-      KOKKOS_LAMBDA( const int &idx, int &cell_cnt ) {
+      KOKKOS_LAMBDA( const int &idx, int &cell_counter ) {
         int m = (idx)/nkji;
         int k = (idx - m*nkji)/nji;
         int j = (idx - m*nkji - k*nji)/indcs.nx1;
@@ -244,13 +245,21 @@ void Particles::SelectCellsForInjection(DvceArray2D<int> &only_good_cells, int &
           if (injp.check_beta) { 
             // Check whether the value of beta at a given location is significantly 
             // larger than the surrounding
-            Real avg_beta = 0.0;
             Real gu[4][4], gl[4][4];
-            ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-            const Real alpha2 = fabs(1.0/gu[0][0]);
-            for (int ia = -ng; ia <= ng; ++ia) {
-              for (int ib = -ng; ib <= ng; ++ib) {
-                for (int ic = -ng; ic <= ng; ++ic) {
+            ComputeMetricAndInverse(x1v,x2v,x3v,ismnkwsk,bhspin,gl,gu); 
+            const Real alpha2 = - 1.0/gu[0][0];
+            // Check that iteration variables don't lead to out-of-bounds
+            const int pts_for_avg = 8;
+            const int x3min_for_avg = ((k-pts_for_avg) < 0) ? -ng : -pts_for_avg;
+            const int x2min_for_avg = ((j-pts_for_avg) < 0) ? -ng : -pts_for_avg;
+            const int x1min_for_avg = ((i-pts_for_avg) < 0) ? -ng : -pts_for_avg;
+            const int x3max_for_avg = ((k+pts_for_avg) > indcs.nx3+ng) ? ng : pts_for_avg;
+            const int x2max_for_avg = ((j+pts_for_avg) > indcs.nx2+ng) ? ng : pts_for_avg;
+            const int x1max_for_avg = ((i+pts_for_avg) > indcs.nx1+ng) ? ng : pts_for_avg;
+            Real avg_beta = 0.0;
+            for (int ia = x3min_for_avg; ia <= x3max_for_avg; ++ia) {
+              for (int ib = x2min_for_avg; ib <= x2max_for_avg; ++ib) {
+                for (int ic = x1min_for_avg; ic <= x1max_for_avg; ++ic) {
                   const int sk = k+ia;
                   const int sj = j+ib;
                   const int si = i+ic;
@@ -273,12 +282,15 @@ void Particles::SelectCellsForInjection(DvceArray2D<int> &only_good_cells, int &
                   + 2.0*bcc_(m,IBY,k,j,i)*bcc_(m,IBZ,k,j,i)*gl[2][3];
             pmag *= alpha2;
             avg_beta -= pgas/pmag; // Remove central value to establish "baseline"
-            avg_beta /= (SQR(ng)*ng-1);
+            const Real n_cells_for_avg = (x3max_for_avg - x3min_for_avg + 1.0)
+                *(x2max_for_avg - x2min_for_avg + 1.0)
+                *(x1max_for_avg - x1min_for_avg + 1.0);
+            avg_beta /= (n_cells_for_avg - 1.0);
             use_cell &= ( (pgas/pmag)/avg_beta > injp.beta_threshold ); 
           }
         }
         cells_for_injection(m,k,j,i) = use_cell;
-        if (use_cell) { cell_cnt += 1; }
+        if (use_cell) { cell_counter += 1; }
       }, Kokkos::Sum<int>(num_good_cells));
   
   Kokkos::realloc(only_good_cells, num_good_cells, 4);
@@ -339,11 +351,11 @@ void Particles::InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &nu
   par_for("part_init", DevExeSpace(),0,npart-1,
     KOKKOS_LAMBDA(const int p){
       auto prtcl_gen = prtcl_rand.get_state();
-      int cc = static_cast<int>(prtcl_gen.frand()*num_good_cells);
-      int m = cell_inj(cc,0);
-      int k = cell_inj(cc,1);
-      int j = cell_inj(cc,2);
-      int i = cell_inj(cc,3);
+      const int cc = static_cast<int>(prtcl_gen.frand()*num_good_cells);
+      const int m = cell_inj(cc,0);
+      const int k = cell_inj(cc,1);
+      const int j = cell_inj(cc,2);
+      const int i = cell_inj(cc,3);
 
       //Actually initialize the particle
       const Real x1min = size.d_view(m).x1min;
@@ -372,17 +384,17 @@ void Particles::InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &nu
                          coord.is_minkowski, coord.bh_spin, set_radius );
       Real gu[4][4], gl[4][4];
       ComputeMetricAndInverse(x1v,x2v,x3v,coord.is_minkowski,coord.bh_spin,gl,gu); 
-      Real u_0 = 0.0;
-      for (int i1 = 0; i1 < 3; ++i1 ){ 
-        for (int i2 = 0; i2 < 3; ++i2 ){
-          u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
-        }
-      }
       if (!is_gca) {
         pr(IPVX,p) = gl[1][1]*u[0] + gl[1][2]*u[1] + gl[1][3]*u[2];
         pr(IPVY,p) = gl[2][1]*u[0] + gl[2][2]*u[1] + gl[2][3]*u[2];
         pr(IPVZ,p) = gl[3][1]*u[0] + gl[3][2]*u[1] + gl[3][3]*u[2];
       } else {
+        Real u_0 = 0.0;
+        for (int i1 = 0; i1 < 3; ++i1 ){ 
+          for (int i2 = 0; i2 < 3; ++i2 ){
+            u_0 += gl[i1+1][i2+1]*u[i1]*u[i2];
+          }
+        }
         pr(IPVX,p) = sqrt(u_0);
         pr(IPVY,p) = 0.001;
       }
