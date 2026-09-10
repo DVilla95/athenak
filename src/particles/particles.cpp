@@ -127,8 +127,13 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   std::string prtcl_init = pin->GetOrAddString("particles","init_method","random");
   if (prtcl_init.compare("random") == 0) {
     inject_pars.flow_align = false;
+    inject_pars.to_center = false;
   } else if (prtcl_init.compare("flow_align") == 0) {
     inject_pars.flow_align = true;
+    inject_pars.to_center = false;
+  } else if (prtcl_init.compare("to_center") == 0) {
+    inject_pars.flow_align = false;
+    inject_pars.to_center = true;
   } else {
     std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
               << "Particle initialization method not recognized." <<std::endl;

@@ -70,6 +70,7 @@ struct InjectionParams {
   bool check_beta; // For beta threshold
   bool check_temperature; // For beta threshold
   bool flow_align; // For velocity init
+  bool to_center; // For velocity init
 };
 
 //----------------------------------------------------------------------------------------

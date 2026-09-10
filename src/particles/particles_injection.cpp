@@ -333,6 +333,7 @@ void Particles::InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &nu
   const int ks = indcs.ks; const int ke = indcs.ke;
 
   const bool flow_align = inject_pars.flow_align; // Capture for kernel
+  const bool to_center = inject_pars.to_center; // Capture for kernel
   const Real max_en = inject_pars.energy_max;
   const Real min_en = inject_pars.energy_min;
 
@@ -376,6 +377,18 @@ void Particles::InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &nu
       Real u[3], b[3];
       b[0] = bcc_(m,IBX,k,j,i);  b[1] = bcc_(m,IBY,k,j,i);  b[2] = bcc_(m,IBZ,k,j,i);
       if (flow_align) { u[0] = w0_(m,IVX,k,j,i); u[1] = w0_(m,IVY,k,j,i); u[2] = w0_(m,IVZ,k,j,i);}
+      else if (to_center) { 
+        const Real vr = -1.0; // Radial velocity directed to center
+        const Real R = sqrt(SQR(x1v) + SQR(x2v)); // Cylindrical radius
+        const Real r = sqrt(SQR(x3v) + SQR(R)); // Spherical radius
+        const Real sin_phi = x2v/R;
+        const Real cos_phi = x1v/R;
+        const Real sin_theta = R/r;
+        const Real cos_theta = x3v/r;
+        u[0] = sin_theta*cos_phi*vr; 
+        u[1] = sin_theta*sin_phi*vr; 
+        u[2] = cos_theta*vr;
+      }
       else { u[0] = 0.1*(0.5 - prtcl_gen.frand()); u[1] = 0.1*(0.5 - prtcl_gen.frand()); u[2] = 0.1*(0.5 - prtcl_gen.frand());}
       Real this_en = min_en + prtcl_gen.frand()*(max_en - min_en);
       prtcl_rand.free_state(prtcl_gen);
