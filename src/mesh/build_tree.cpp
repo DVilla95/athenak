@@ -1,5 +1,5 @@
 //========================================================================================
-// AthenaXXX astrophysical plasma code
+ // AthenaXXX astrophysical plasma code
 // Copyright(C) 2020 James M. Stone <jmstone@ias.edu> and the Athena code team
 // Licensed under the 3-clause BSD License (the "LICENSE")
 //========================================================================================
@@ -267,8 +267,9 @@ void Mesh::BuildTreeFromScratch(ParameterInput *pin) {
   pmb_pack->pmb->SetNeighbors(ptree, rank_eachmb);
 
   // Fix maximum number of MeshBlocks per rank with AMR
-  nmb_maxperrank = nmb_thisrank;
-  if (adaptive) {
+  // Following load_balancing without SMR/AMR, also the mesh itself might require a maximum nmb 
+  nmb_maxperrank = std::fmax(nmb_thisrank, nmb_maxperrank);
+  if (multilevel) {
     if (pin->DoesParameterExist("mesh_refinement", "max_nmb_per_rank")) {
       nmb_maxperrank = pin->GetReal("mesh_refinement", "max_nmb_per_rank");
       if (nmb_maxperrank < nmb_thisrank) {
@@ -280,7 +281,7 @@ void Mesh::BuildTreeFromScratch(ParameterInput *pin) {
       }
     } else {
       std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
-        << std::endl << "With AMR maximum number of MeshBlocks per rank must be "
+        << std::endl << "With SMR/AMR maximum number of MeshBlocks per rank must be "
         << "specified in input file using <mesh_refinement>/max_nmb_per_rank"
         << std::endl;
       std::exit(EXIT_FAILURE);
@@ -479,7 +480,7 @@ void Mesh::BuildTreeFromRestart(ParameterInput *pin, IOWrapper &resfile,
 
   // Fix maximum number of MeshBlocks per rank with AMR
   nmb_maxperrank = nmb_thisrank;
-  if (adaptive) {
+  if (multilevel) {
     if (pin->DoesParameterExist("mesh_refinement", "max_nmb_per_rank")) {
       nmb_maxperrank = pin->GetReal("mesh_refinement", "max_nmb_per_rank");
       if (nmb_maxperrank < nmb_thisrank) {

@@ -54,4 +54,45 @@ void CurrentDensity(TeamMember_t const &member, const int m, const int k, const 
   return;
 }
 
+KOKKOS_INLINE_FUNCTION
+void CurlFC(const int m, const int k, const int j, const int i,
+     const DvceFaceFld4D<Real> &b, const RegionSize &size,
+     Real &j1, Real &j2, Real &j3,
+     const Real thr_val, bool &thr_check ) {
+  Real x3x1, x3x2, x2x3, x2x1, x1x3, x1x2;
+  x3x1 = (b.x3f(m,k,j,i) - b.x3f(m,k,j,i-1))/size.dx1;
+  x2x1 = (b.x2f(m,k,j,i) - b.x2f(m,k,j,i-1))/size.dx1;
+  x3x2 = (b.x3f(m,k,j,i) - b.x3f(m,k,j-1,i))/size.dx2;
+  x1x2 = (b.x1f(m,k,j,i) - b.x1f(m,k,j-1,i))/size.dx2;
+  x2x3 = (b.x2f(m,k,j,i) - b.x2f(m,k-1,j,i))/size.dx3;
+  x1x3 = (b.x1f(m,k,j,i) - b.x1f(m,k-1,j,i))/size.dx3;
+  thr_check = thr_check 
+    && ( fabs( 2.0*x1x2 / (b.x1f(m,k,j,i)+b.x1f(m,k,j-1,i)) ) < thr_val );
+  thr_check = thr_check 
+    && ( fabs( 2.0*x1x3 / (b.x1f(m,k,j,i)+b.x1f(m,k-1,j,i)) ) < thr_val );
+  thr_check = thr_check 
+    && ( fabs( 2.0*x2x1 / (b.x2f(m,k,j,i)+b.x2f(m,k,j,i-1)) ) < thr_val );
+  thr_check = thr_check 
+    && ( fabs( 2.0*x2x3 / (b.x2f(m,k,j,i)+b.x2f(m,k-1,j,i)) ) < thr_val );
+  thr_check = thr_check 
+    && ( fabs( 2.0*x3x1 / (b.x3f(m,k,j,i)+b.x3f(m,k,j,i-1)) ) < thr_val );
+  thr_check = thr_check 
+    && ( fabs( 2.0*x3x2 / (b.x3f(m,k,j,i)+b.x3f(m,k,j-1,i)) ) < thr_val );
+  j1 = 0.0;
+  j2 = -x3x1;
+  j3 =  x2x1;
+
+  j1 += x3x2;
+  j3 -= x1x2;
+
+  j1 -= x2x3;
+  j2 += x1x3;
+  return;
+}
+
+//Fancy sign function
+KOKKOS_INLINE_FUNCTION
+int SignOf(Real val) {
+  return ( (val > 0.0) - (val < 0.0) );
+}
 #endif // DIFFUSION_CURRENT_DENSITY_HPP_

@@ -30,7 +30,7 @@ class ProblemGenerator {
   ProblemGenerator(ParameterInput *pin, Mesh *pmesh);
   // constructor for restarts
   ProblemGenerator(ParameterInput *pin, Mesh *pmesh, IOWrapper resfile,
-                   bool single_file_per_rank=false);
+                   bool single_file_per_rank=false, std::string restart_file="");
   ~ProblemGenerator() = default;
 
   // true if user BCs are specified on any face

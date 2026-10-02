@@ -18,10 +18,32 @@
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "z4c/z4c.hpp"
+#include "particles/particles.hpp"
 
 #if MPI_PARALLEL_ENABLED
 #include <mpi.h>
 #endif
+
+//----------------------------------------------------------------------------------------
+//! \fn void UpdateGIDLB()
+//! \brief Updates GID of particles that cross boundary of their parent MeshBlock.  If
+//! the new GID is on a different rank, then store in sendlist_buf DvceArray: (1) index of
+//! particle in prtcl array, (2) destination GID, and (3) destination rank.
+
+KOKKOS_INLINE_FUNCTION
+void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int destgid, int *pcounter,
+               DualArray1D<ParticleLocationData> slist, int p) {
+  prtclgid = destgid;
+#if MPI_PARALLEL_ENABLED
+  if (newrank != myrank) {
+    int index = Kokkos::atomic_fetch_add(pcounter,1);
+    slist.d_view(index).prtcl_indx = p;
+    slist.d_view(index).dest_gid   = destgid;
+    slist.d_view(index).dest_rank  = newrank;
+  }
+#endif
+  return;
+}
 
 //----------------------------------------------------------------------------------------
 //! \fn void Mesh::LoadBalance(double *clist, int *rlist, int *slist, int *nlist, int nb)
@@ -1009,5 +1031,54 @@ void MeshRefinement::ClearSendAMR() {
   }
   delete [] send_req;
 #endif
+  return;
+}
+
+void MeshRefinement::InitRecvAMR_prtcl(int nold_nmb, int nnew_nmb) {
+  particles::Particles* ppart = pmy_mesh->pmb_pack->ppart;
+  // Gather info on particles to send/receive
+  // Re-use pre-existing objects for particle communication
+  int gv_myrank = global_variable::my_rank;
+  auto &pi = ppart->prtcl_idata;
+  auto &psendl = ppart->pbval_part->sendlist;
+  auto &pdestl = ppart->pbval_part->destroylist;
+  auto &nprt_send = ppart->pbval_part->nprtcl_send;
+  auto &nprt_del = ppart->pbval_part->nprtcl_destroy;
+  nprt_del = 0;
+  auto &nprtcl_this = ppart->nprtcl_thispack;
+  Kokkos::realloc(psendl, static_cast<int>(nprtcl_this)); // Load balance can end up moving all the particles on a rank
+  if (nprtcl_this == 0) {
+    nprt_send = 0;
+  } else {
+    int counter=0;
+    Kokkos::View<int> atom_count("atom_count");
+    Kokkos::deep_copy(atom_count, counter);
+    Kokkos::View<int*, HostMemSpace> aux_view("dvce_new_rank",nnew_nmb);
+    for (int im=0; im<nnew_nmb; ++im) { aux_view(im) = new_rank_eachmb[im]; }
+    auto dvce_new_rank_eachmb = Kokkos::create_mirror(DevExeSpace(), aux_view);
+    Kokkos::deep_copy(dvce_new_rank_eachmb, aux_view);
+    Kokkos::realloc(aux_view, nold_nmb);
+    for (int im=0; im<nold_nmb; ++im) { aux_view(im) = oldtonew[im]; }
+    auto dvce_oldtonew = Kokkos::create_mirror(DevExeSpace(), aux_view);
+    Kokkos::deep_copy(dvce_oldtonew, aux_view);
+    par_for("part_loadbalance",DevExeSpace(),0,(nprtcl_this-1), KOKKOS_LAMBDA(const int p) {
+      int m = pi(PGID,p);
+      int new_m = dvce_oldtonew(m);
+      int new_rank = dvce_new_rank_eachmb(new_m);
+      if ( (new_rank != gv_myrank) || (new_m != m) )
+        UpdateGIDLB(pi(PGID,p),new_rank,gv_myrank,new_m,&atom_count(),psendl,p);
+    });
+    Kokkos::deep_copy(counter, atom_count);
+    nprt_send = counter;
+  }
+  Kokkos::resize(psendl, nprt_send);
+  Kokkos::realloc(pdestl, nprt_del);
+  // sync sendlist device array with host
+  psendl.template modify<DevExeSpace>();
+  psendl.template sync<HostMemSpace>();
+  pdestl.template modify<HostMemSpace>();
+  pdestl.template sync<DevExeSpace>();
+  (void) ppart->pbval_part->CountSendsAndRecvs();
+  (void) ppart->pbval_part->InitPrtclRecv();
   return;
 }

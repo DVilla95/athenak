@@ -324,7 +324,8 @@ int main(int argc, char *argv[]) {
     pmesh->pgen = std::make_unique<ProblemGenerator>(pinput,
                                                      pmesh,
                                                      restartfile,
-                                                     single_file_per_rank);
+                                                     single_file_per_rank,
+                                                     restart_file);
     restartfile.Close(single_file_per_rank);
   }
   //--- Step 6. --------------------------------------------------------------------------

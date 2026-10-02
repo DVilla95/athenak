@@ -27,6 +27,7 @@
 #include "coordinates/adm.hpp"
 #include "z4c/z4c.hpp"
 #include "z4c/z4c_amr.hpp"
+#include "particles/particles.hpp"
 #include "prolongation.hpp"
 #include "restriction.hpp"
 
@@ -57,6 +58,7 @@ MeshRefinement::MeshRefinement(Mesh *pm, ParameterInput *pin) :
     // read interval (in cycles) between check of AMR and derefinement
     ncyc_check_amr = pin->GetOrAddReal("mesh_refinement", "ncycle_check", 1);
     refinement_interval = pin->GetOrAddInteger("mesh_refinement", "refinement_interval", 5);
+    ncyc_check_lb = pin->GetOrAddInteger("mesh_refinement", "ncycle_check_loadbalance", static_cast<int>(1e+9));
     // read prolongate primitives flag
     if (pin->DoesParameterExist("mesh_refinement", "prolong_primitives")) {
       prolong_prims = pin->GetBoolean("mesh_refinement", "prolong_primitives");
@@ -117,19 +119,40 @@ MeshRefinement::~MeshRefinement() {
 }
 
 //----------------------------------------------------------------------------------------
+//! \fn void MeshRefinement::ResetRefineFlag()
+//! \brief Simple driver function for adaptive mesh refinement
+
+void MeshRefinement::ResetRefineFlag() {
+  // reallocate and zero refine_flag in host space and sync with device
+  Kokkos::realloc(refine_flag, pmy_mesh->nmb_total);
+  for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
+    refine_flag.h_view(m) = 0;
+  }
+  refine_flag.template modify<HostMemSpace>();
+  refine_flag.template sync<DevExeSpace>();
+  return;
+}
+
+//----------------------------------------------------------------------------------------
 //! \fn void MeshRefinement::AdaptiveMeshRefinement()
 //! \brief Simple driver function for adaptive mesh refinement
 
-void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin) {
+void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin, bool check_balance) {
   // first check refinement criteria
-  CheckForRefinement(pmy_mesh->pmb_pack);
+  int nnew = 0, ndel = 0;
+
+  const bool is_adaptive = pmy_mesh->adaptive; // Function gets called either way, thus check what for
+  if (!check_balance && is_adaptive) {
+    CheckForRefinement(pmy_mesh->pmb_pack);
+    UpdateMeshBlockTree(nnew, ndel);
+  } else {
+    ResetRefineFlag(); // Load Balance also uses the refine_flag, though this might be changed later
+  }
 
   // then update mesh tree if MeshBlock anywhere (on any rank) is flagged for refinement
-  int nnew = 0, ndel = 0;
-  UpdateMeshBlockTree(nnew, ndel);
 
   // Refine/derefine mesh and evolved data, set boundary conditions/timestep on new mesh
-  if (nnew != 0 || ndel != 0) { // at least one (de)refinement flagged
+  if (nnew != 0 || ndel != 0 || check_balance) { // at least one (de)refinement flagged
     RedistAndRefineMeshBlocks(pin, nnew, ndel);
     pdriver->InitBoundaryValuesAndPrimitives(pmy_mesh);
 
@@ -146,10 +169,24 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
     if (pmbp->pz4c != nullptr) {
       (void) pmbp->pz4c->NewTimeStep(pdriver, pdriver->nexp_stages);
     }
+    if (pmbp->ppart != nullptr) {
+      (void) pmbp->ppart->NewTimeStep(pdriver, pdriver->nexp_stages);
+    }
 
     nmb_created += nnew;
     nmb_deleted += ndel;
   }
+
+#if MPI_PARALLEL_ENABLED
+  if (check_balance) {
+    std::cout << "Load balance: Rank " << global_variable::my_rank << " currently handles " 
+      << pmy_mesh->nmb_thisrank << " MBs";
+    if (pmy_mesh->pmb_pack->ppart != nullptr) {
+      std::cout << ", and " << pmy_mesh->nprtcl_thisrank << " particles" ;
+    }
+    std::cout << "." << std::endl;
+  }
+#endif
   return;
 }
 
@@ -168,14 +205,7 @@ void MeshRefinement::AdaptiveMeshRefinement(Driver *pdriver, ParameterInput *pin
 //! pointer in the problem generator.
 
 void MeshRefinement::CheckForRefinement(MeshBlockPack* pmbp) {
-  // reallocate and zero refine_flag in host space and sync with device
-  Kokkos::realloc(refine_flag, pmy_mesh->nmb_total);
-  for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
-    refine_flag.h_view(m) = 0;
-  }
-  refine_flag.template modify<HostMemSpace>();
-  refine_flag.template sync<DevExeSpace>();
-
+  ResetRefineFlag();
   // increment cycle counter for each MB
   for (int m=0; m<(pmy_mesh->nmb_total); ++m) {
     ncyc_since_ref(m) += 1;
@@ -514,7 +544,39 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   new_gids_eachrank = new int[global_variable::nranks];
   new_nmb_eachrank = new int[global_variable::nranks];
 
+  particles::Particles* ppart = pmy_mesh->pmb_pack->ppart;
+  const bool has_prtcls = ppart != nullptr;
+  if (has_prtcls) {
+    gather_ppmb = new int[new_nmb];
+    for (int im=0; im<old_nmb; ++im) {gather_ppmb[im] = 0;}
+  }
+
+#if MPI_PARALLEL_ENABLED
+  // check there is at least one MeshBlock per MPI rank
+  if (new_nmb < global_variable::nranks) {
+    std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+        << "Fewer MeshBlocks (nmb_total=" << new_nmb << ") than MPI ranks (nranks="
+        << global_variable::nranks << ")" << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+  if (has_prtcls) {
+    prtcls_per_mb_this = new int[pmy_mesh->nmb_thisrank];
+    ppart->CountPartclsPerMB(prtcls_per_mb_this);
+    MPI_Allgatherv(
+        prtcls_per_mb_this, pmy_mesh->nmb_thisrank, MPI_INT,
+        gather_ppmb, pmy_mesh->nmb_eachrank, pmy_mesh->gids_eachrank, MPI_INT,
+        MPI_COMM_WORLD
+        );
+  }
+#endif
+
   for (int i=0; i<new_nmb; i++) {new_cost_eachmb[i] = 1.0;}
+  if (has_prtcls) {
+    auto ms_idcs = pmy_mesh->mesh_indcs;
+    float ncells_per_mb = ms_idcs.nx1*ms_idcs.nx2*ms_idcs.nx3;
+    const Real prt_cost = ppart->prtcl_cost;
+    for (int i=0; i<new_nmb; i++) {new_cost_eachmb[i] += prt_cost*gather_ppmb[newtoold[i]]/ncells_per_mb;}
+  }
   pm->LoadBalance(new_cost_eachmb, new_rank_eachmb, new_gids_eachrank, new_nmb_eachrank,
                   new_nmb_total);
   if (new_nmb_eachrank[global_variable::my_rank] > pm->nmb_maxperrank) {
@@ -551,8 +613,17 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
 #if MPI_PARALLEL_ENABLED
   InitRecvAMR(nleaf);
   PackAndSendAMR(nleaf);
+  if (has_prtcls) {
+    InitRecvAMR_prtcl(old_nmb,new_nmb);
+    (void) ppart->pbval_part->PackAndSendPrtcls();
+  }
   nmb_sent_thisrank += nmb_send;
 #endif
+  int nprt_send = 0; int nprt_recv = 0;
+  if (has_prtcls) {
+    nprt_send = ppart->pbval_part->nprtcl_send;
+    nprt_recv = ppart->pbval_part->nprtcl_recv;
+  }
 
   // Step 5.
   // De-refine (restrict) evolved physics variables for MeshBlocks within this rank.
@@ -612,6 +683,11 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
 #if MPI_PARALLEL_ENABLED
   if (nmb_send > 0) {ClearSendAMR();}
   if (nmb_recv > 0) {ClearRecvAndUnpackAMR();}
+  if (has_prtcls) {
+   (void) ppart->pbval_part->ClearPrtclSend();
+   (void) ppart->pbval_part->ClearPrtclRecv(); // Wait for communication -> Effectively blocking
+   (void) ppart->pbval_part->RecvAndUnpackPrtcls(); // This also updates particle info across ranks -> Need to call on all ranks regardless
+  }
 #endif
 
   // copy newtoold array to DualView so that it can be accessed in kernel
@@ -680,6 +756,10 @@ void MeshRefinement::RedistAndRefineMeshBlocks(ParameterInput *pin, int nnew, in
   // clean-up and return
   delete [] newtoold;
   delete [] oldtonew;
+  if (has_prtcls) {
+    delete [] gather_ppmb;
+    delete [] prtcls_per_mb_this;
+  }
 
   // Step 11.
   // Recalculate ADM variables if necessary.

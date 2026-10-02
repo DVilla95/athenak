@@ -372,6 +372,9 @@ void Driver::Initialize(Mesh *pmesh, ParameterInput *pin, Outputs *pout, bool re
     Kokkos::realloc(impl_src, nimp_stages, nmb, 8, ncells3, ncells2, ncells1);
   }
 
+  bool check_balance = true;
+  if (pmesh->multilevel) {pmesh->pmr->AdaptiveMeshRefinement(this, pin, check_balance);}
+
   return;
 }
 
@@ -492,7 +495,9 @@ void Driver::Execute(Mesh *pmesh, ParameterInput *pin, Outputs *pout) {
       }
 
       // AMR
-      if (pmesh->adaptive) {pmesh->pmr->AdaptiveMeshRefinement(this, pin);}
+      bool check_balance = false;
+      if (pmesh->ncycle%(pmesh->pmr->ncyc_check_lb) == 0) {check_balance = true;}  // not cycle to check
+      if (pmesh->multilevel) {pmesh->pmr->AdaptiveMeshRefinement(this, pin, check_balance);}
       // compute new timestep AFTER all Meshblocks refined/derefined
       pmesh->NewTimeStep(tlim);
 
@@ -528,7 +533,7 @@ void Driver::Finalize(Mesh *pmesh, ParameterInput *pin, Outputs *pout) {
   if (time_evolution != TimeEvolution::tstatic) {
 #if MPI_PARALLEL_ENABLED
     // Collect number of MeshBlocks communicated during load balancing across all ranks
-    if (pmesh->adaptive) {
+    if (pmesh->multilevel) {
       MPI_Allreduce(MPI_IN_PLACE, &(pmesh->pmr->nmb_sent_thisrank), 1, MPI_INT, MPI_SUM,
                     MPI_COMM_WORLD);
     }
@@ -584,7 +589,15 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
     Real elapsed = pwall_clock_->seconds();
     std::cout << "elapsed=" << std::scientific << std::setprecision(dtprcsn) << elapsed
               << " cycle=" << pm->ncycle
-              << " time=" << pm->time << " dt=" << pm->dt << std::endl;
+              << " time=" << pm->time << " dt=" << pm->dt;
+    if (pm->pmb_pack->ppart != nullptr) {
+      int num = std::min(1,pm->nfails_prtcl); // If zero fails, this will catch it, otherwise show rate
+      std::cout << std::fixed << std::setprecision(1)
+                << "\n     particles=" << pm->nprtcl_total
+                << " iterations(avg)=" << pm->avg_iter_prtcl
+                << " fail-rate=" << num << "/" << pm->nprtcl_total/(std::max(1,pm->nfails_prtcl));
+    }
+    std::cout << std::endl;
   }
   return;
 }
@@ -695,6 +708,9 @@ void Driver::InitBoundaryValuesAndPrimitives(Mesh *pm) {
     (void) prad->ApplyPhysicalBCs(this, 0);
     (void) prad->Prolongate(this, 0);
   }
+
+  // Initialize particles. At this point no additional steps needed
+  // particles::Particles *ppart = pm->pmb_pack->ppart;
 
   return;
 }

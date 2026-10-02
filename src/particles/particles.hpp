@@ -47,6 +47,32 @@ struct ParticlesTaskIDs {
 
 namespace particles {
 
+struct InjectionParams {
+  Real r_min; // Radii for injection
+  Real r_max;
+  Real theta_min; // Poloidal angles for injection
+  Real theta_max;
+  Real phi_min; // Azimuthal angles for injection
+  Real phi_max;
+  Real x3_min; // For torus problem this injects at specified "height"
+  Real x3_max;
+  Real density_threshold; // Parameters for injection based on fluid properties
+  Real current_threshold;
+  Real asp_ratio_threshold;
+  Real beta_threshold;
+  Real temperature_threshold;
+  Real energy_max; // Parameters for particle energy at injection
+  Real energy_min;
+  bool init_gyroradius; // Initialize based on gyroradius rather than energy
+  bool check_asp_ratio; // For current sheet: need to check also aspect ratio other than magnitude
+  bool check_current; // For current sheet
+  bool check_density; // For density threshold
+  bool check_beta; // For beta threshold
+  bool check_temperature; // For beta threshold
+  bool flow_align; // For velocity init
+  bool to_center; // For velocity init
+};
+
 //----------------------------------------------------------------------------------------
 //! \class Particles
 
@@ -68,13 +94,17 @@ class Particles {
   Real dtnew;
   Real iter_tolerance;
   Real average_iteration_number;
+  int max_iteration_number;
+  int fail_num;
   int max_iter;
   Real min_radius; // This radius is used to destroy particles before they may reach the horizon
   Real charge_over_mass; //Store charge over mass ratio
 	bool is_gca; // Store if the system in question has only two velocity components
   Real prtcl_push_safety; // "Safety factor" to ensure time-step doesn't cause issues when iterating
+  Real prtcl_cost; // "Cost factor" for load balancing
 
   ParticlesPusher pusher;
+  InjectionParams inject_pars;
 
   // Boundary communication buffers and functions for particles
   ParticlesBoundaryValues *pbval_part;
@@ -85,6 +115,7 @@ class Particles {
   // functions...
   void CreateParticleTags(ParameterInput *pin);
   void AssembleTasks(std::map<std::string, std::shared_ptr<TaskList>> tl);
+  void CountPartclsPerMB(int *ppmb);
   TaskStatus Push(Driver *pdriver, int stage);
   TaskStatus NewGID(Driver *pdriver, int stage);
   TaskStatus SendCnt(Driver *pdriver, int stage);
@@ -94,11 +125,17 @@ class Particles {
   TaskStatus ClearSend(Driver *pdriver, int stage);
   TaskStatus ClearRecv(Driver *pdriver, int stage);
   TaskStatus NewTimeStep(Driver *pdriver, int stage);
+  // void UpdateGIDLB(int &prtclgid, int newrank, int myrank, int mygid, int *pcounter,
+  //              DualArray1D<ParticleLocationData> slist, int p);
 
   void BorisStepGR( const Real dt, const bool only_v );
   void HamiltonianGeodesicsIterations( const Real dt );
   void GRLorentzIterations( const Real dt );
   void GCAIterations( const Real dt );
+
+  // injection/initialization functions
+  void SelectCellsForInjection(DvceArray2D<int> &cell_inj, int &num_good_cells);
+  void InitializePrtcls(const DvceArray2D<int> &cell_inj, const int &num_good_cells);
 
  private:
   MeshBlockPack* pmy_pack;  // ptr to MeshBlockPack containing this Particles

@@ -18,6 +18,7 @@
 #include "parameter_input.hpp"
 #include "mesh.hpp"
 #include "coordinates/cell_locations.hpp"
+#include "coordinates/adm.hpp"
 #include "hydro/hydro.hpp"
 #include "mhd/mhd.hpp"
 #include "z4c/z4c.hpp"
@@ -64,6 +65,11 @@ Mesh::Mesh(ParameterInput *pin) :
   mesh_indcs.nx1 = pin->GetInteger("mesh", "nx1");
   mesh_indcs.nx2 = pin->GetInteger("mesh", "nx2");
   mesh_indcs.nx3 = pin->GetInteger("mesh", "nx3");
+
+  ndiag = pin->GetOrAddInteger("time", "ndiag", 1);
+  avg_iter_prtcl = 0.0;
+  max_iter_prtcl = 0;
+  nfails_prtcl = 0;
 
   // define some useful flags that indicate 1D/2D/3D calculations
   if (mesh_indcs.nx3 > 1) {
@@ -340,6 +346,9 @@ Mesh::~Mesh() {
   delete [] lloc_eachmb;
   delete [] gids_eachrank;
   delete [] nmb_eachrank;
+  if (pmb_pack->ppart != nullptr) {
+    delete [] nprtcl_eachrank;
+  }
   delete pmb_pack;
   if (multilevel) {
     delete pmr;
@@ -645,21 +654,22 @@ void Mesh::AddCoordinatesAndPhysics(ParameterInput *pinput) {
   // Determine total number of particles across all ranks
   particles::Particles *ppart = pmb_pack->ppart;
   if (ppart != nullptr) {
-    nprtcl_thisrank = 0;
-    for (int n=0; n<nmb_packs_thisrank; ++n) {
-      nprtcl_thisrank += pmb_pack->ppart->nprtcl_thispack;
-    }
     nprtcl_eachrank = new int[global_variable::nranks];
-    nprtcl_eachrank[global_variable::my_rank] = nprtcl_thisrank;
+    const bool inject_particles = pinput->GetOrAddBoolean("particles", "inject_at_restart", false);
+    if (inject_particles) { //Only assign tags if you're injecting new particles, otherwise get from restart
+      nprtcl_thisrank = 0;
+      for (int n=0; n<nmb_packs_thisrank; ++n) {
+        nprtcl_thisrank += pmb_pack->ppart->nprtcl_thispack;
+      }
+      nprtcl_eachrank[global_variable::my_rank] = nprtcl_thisrank;
 #if MPI_PARALLEL_ENABLED
-    // Share number of particles on each rank with all ranks
-    MPI_Allgather(&nprtcl_thisrank,1,MPI_INT,nprtcl_eachrank,1,MPI_INT,MPI_COMM_WORLD);
+      // Share number of particles on each rank with all ranks
+      MPI_Allgather(&nprtcl_thisrank,1,MPI_INT,nprtcl_eachrank,1,MPI_INT,MPI_COMM_WORLD);
 #endif
-    for (int n=0; n<global_variable::nranks; ++n) {
-      nprtcl_total += nprtcl_eachrank[n];
-    }
-    // Assign particle IDs
-    if (pmb_pack->ppart != nullptr) {
+      for (int n=0; n<global_variable::nranks; ++n) {
+        nprtcl_total += nprtcl_eachrank[n];
+      }
+      // Assign particle IDs
       pmb_pack->ppart->CreateParticleTags(pinput);
     }
   }
@@ -670,19 +680,26 @@ void Mesh::AddCoordinatesAndPhysics(ParameterInput *pinput) {
 void Mesh::UpdatePrtclInfo() {
   // Determine total number of particles across all ranks
   particles::Particles *ppart = pmb_pack->ppart;
-  nprtcl_thisrank = 0.0;
+  nprtcl_thisrank = 0;
   for (int n=0; n<nmb_packs_thisrank; ++n) {
     nprtcl_thisrank += pmb_pack->ppart->nprtcl_thispack;
   }
-  nprtcl_eachrank = new int[global_variable::nranks];
   nprtcl_eachrank[global_variable::my_rank] = nprtcl_thisrank;
 #if MPI_PARALLEL_ENABLED
   // Share number of particles on each rank with all ranks
   MPI_Allgather(&nprtcl_thisrank,1,MPI_INT,nprtcl_eachrank,1,MPI_INT,MPI_COMM_WORLD);
+  if ((ncycle+1) % ndiag == 0) { // Only gather this info when it will be needed for printing diags
+    MPI_Allreduce(&pmb_pack->ppart->average_iteration_number,&avg_iter_prtcl,1,MPI_ATHENA_REAL,MPI_SUM,MPI_COMM_WORLD);
+    MPI_Allreduce(&pmb_pack->ppart->max_iteration_number,&max_iter_prtcl,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+    MPI_Allreduce(&pmb_pack->ppart->fail_num,&nfails_prtcl,1,MPI_INT,MPI_SUM,MPI_COMM_WORLD);
+  }
 #endif
   nprtcl_total = 0;
+  int n_no_prtcl = 0;
   for (int n=0; n<global_variable::nranks; ++n) {
     nprtcl_total += nprtcl_eachrank[n];
+    if (nprtcl_eachrank[n] == 0) {n_no_prtcl++;}
   }
+  avg_iter_prtcl /= (global_variable::nranks - n_no_prtcl);
 }
 
