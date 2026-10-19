@@ -48,11 +48,6 @@ KOKKOS_INLINE_FUNCTION
 static Real CalculateCovariantUT(Real spin, Real r, Real sin_theta, Real l);
 
 KOKKOS_INLINE_FUNCTION
-static void GetBoyerLindquistCoordinates(Real spin,
-                                         Real x1, Real x2, Real x3,
-                                         Real *pr, Real *ptheta, Real *pphi);
-
-KOKKOS_INLINE_FUNCTION
 static void TransformVector(Real spin,
                             Real a0_bl, Real a1_bl, Real a2_bl, Real a3_bl,
                             Real x1, Real x2, Real x3,
@@ -95,121 +90,74 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   const Real B0 = pin->GetOrAddReal("problem", "b0_strength", 1.0);
 
   Real dpl = 0.0;
-  if (!monopole)
+  if (!monopole) {
     dpl = pin->GetReal("problem", "dipole_moment");
     dpl_mom = dpl;
+  }
 
   const bool has_particles = (pmbp->ppart != nullptr);
   // Need to split checks, otherwise a "particles" block will get initialized and written to the restart file
   // Then when trying to restart the mhd part this gives error because it looks for necessary particles parameters
   if (has_particles) {
-    const bool inject_particles = pin->GetOrAddBoolean("particles", "inject", false);
+    const bool inject_particles = pin->GetOrAddBoolean("particles", "inject_at_restart", false);
     auto &size = pmbp->pmb->mb_size;
+    auto &indcs = pmbp->pmesh->mb_indcs;
+    int &ng = indcs.ng;
+    int n1 = indcs.nx1 + 2*ng;
+    int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
+    int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
+    const int is = indcs.is;
+    const int js = indcs.js;
+    const int ks = indcs.ks;
+    auto &gids = pmbp->gids;
+    auto &gide = pmbp->gide;
+    auto &coord = pmbp->pcoord->coord_data;
+    int &npart = pmbp->ppart->nprtcl_thispack;
+    auto &pr = pmbp->ppart->prtcl_rdata;
+    auto &pi = pmbp->ppart->prtcl_idata;
+    Real massive = 1.0; //This should be based on ptype, not hard-coded
+    Real min_en = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
+    Real max_en = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
+    std::string prtcl_init_type = pin->GetString("particles","init_type");
+    const Real q_over_m = pin->GetOrAddReal("particles", "charge_over_mass", 1);
+    const bool is_gca = pmbp->ppart->is_gca;
+
+    // Define criterium for how to initialize particles
+    Real min_rad = pmbp->ppart->min_radius;
+    Real crit, crit_min;
+
+    // Initialize particles within a specific spherical shell
+    if ( ! pin->DoesParameterExist("particles", "r_init_max") ) {
+      std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
+        << "Particle initialization type " << prtcl_init_type <<" missing required parameter: " << "r_init_max" << std::endl;
+      std::exit(EXIT_FAILURE);
+    }
+    crit = pin->GetReal("particles", "r_init_max");
+    crit_min = pin->GetOrAddReal("particles", "r_init_min", 0.0); 
+    min_rad = fmax( min_rad, crit_min );
+
     if (inject_particles) {
-      auto &indcs = pmbp->pmesh->mb_indcs;
+      // Define criterium for how to initialize particles
+      int num_good_cells;
+      int nmb = (pmbp->nmb_thispack);
       int &ng = indcs.ng;
       int n1 = indcs.nx1 + 2*ng;
       int n2 = (indcs.nx2 > 1)? (indcs.nx2 + 2*ng) : 1;
       int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
-      const int is = indcs.is;
-      const int js = indcs.js;
-      const int ks = indcs.ks;
-      auto &gids = pmbp->gids;
-      auto &gide = pmbp->gide;
-      auto &coord = pmbp->pcoord->coord_data;
-      int &npart = pmbp->ppart->nprtcl_thispack;
-      auto &pr = pmbp->ppart->prtcl_rdata;
-      auto &pi = pmbp->ppart->prtcl_idata;
-      Real massive = 1.0; //This should be based on ptype, not hard-coded
-      Real min_en = pin->GetOrAddReal("problem", "prtcl_energy_min", 1.005);
-      Real max_en = pin->GetOrAddReal("problem", "prtcl_energy_max", 1.5);
-      std::string prtcl_init_type = pin->GetString("particles","init_type");
-      const Real q_over_m = pin->GetOrAddReal("particles", "charge_over_mass", 1);
-      // Need these booleans on device, can't use std::string
-      // .compare() returns 0 for successful comparison, which is opposite of usual boolean
-      const bool prtcl_init_rnd = !(prtcl_init_type.compare("random"));
-      const bool prtcl_init_flow = !(prtcl_init_type.compare("flow_align"));
-      const bool prtcl_init_blob = !(prtcl_init_type.compare("blob"));
-      const bool prtcl_init_rad = !(prtcl_init_type.compare("shell"));
-      const bool is_gca = pmbp->ppart->is_gca;
-      // Check initialization type has been set
-
-      DvceArray5D<Real> u0_, w0_;
-      DvceArray5D<Real> bcc_;
-      auto &bface_ = pmbp->pmhd->b0;
-      u0_ = pmbp->pmhd->u0;
-      w0_ = pmbp->pmhd->w0;
-      bcc_ = pmbp->pmhd->bcc0;
-      pmbp->pmhd->peos->ConsToPrim(u0_,bface_,w0_,bcc_,false,0,(n1-1),0,(n2-1),0,(n3-1));
-
-      // Define criterium for how to initialize particles
-      Real min_rad = pmbp->ppart->min_radius;
-      Real crit, crit_min;
-      bool is_crit_satisfied;
-      int nmb = (pmbp->nmb_thispack);
-      // Array stores whether or not the Meshblock is viable for particle injection
+      // Array stores whether or not the Cell is viable for particle injection
       // based on criterium
-      DvceArray1D<bool> mb_for_injection;
-      Kokkos::realloc(mb_for_injection, nmb);
-      par_for("init_mb_for_injection", DevExeSpace(), 0, nmb-1,
-          KOKKOS_LAMBDA( const int &im ) {
-          mb_for_injection[im] = false;
-        });
+      DvceArray2D<int> only_good_cells; // Array holds the m,k,j,i indeces of the cells that can be used to initialize particles
+      pmbp->ppart->SelectCellsForInjection(only_good_cells, num_good_cells);
 
-      // Initialize particles within a specific spherical shell
-      if ( ! pin->DoesParameterExist("particles", "r_init_max") ) {
-        std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__ << std::endl
-          << "Particle initialization type " << prtcl_init_type <<" missing required parameter: " << "r_init_max" << std::endl;
-        std::exit(EXIT_FAILURE);
-      }
-      crit = pin->GetReal("particles", "r_init_max");
-      crit_min = pin->GetOrAddReal("particles", "r_init_min", 0.0); 
-      int mbs_in_shell = 0;
-      const int try_lim = 15;
-      min_rad = fmax( min_rad, crit_min );
-
-      Kokkos::parallel_reduce("pgen_mbp_checkcondition", Kokkos::RangePolicy<>(DevExeSpace(), 0, nmb),
-      KOKKOS_LAMBDA(const int &m, int &mb_count ) {
-        // Notice the absolute value
-        Real x1min = fabs(size.d_view(m).x1min);
-        Real x1max = fabs(size.d_view(m).x1max);
-        Real x1i = fmin( x1min, x1max );
-        Real x1o = fmax( x1min, x1max );
-        Real x2min = fabs(size.d_view(m).x2min);
-        Real x2max = fabs(size.d_view(m).x2max);
-        Real x2i = fmin( x2min, x2max );
-        Real x2o = fmax( x2min, x2max );
-        Real x3min = fabs(size.d_view(m).x3min);
-        Real x3max = fabs(size.d_view(m).x3max);
-        Real x3i = fmin( x3min, x3max );
-        Real x3o = fmax( x3min, x3max );
-        Real r_i, r_o, th, phi;
-        GetBoyerLindquistCoordinates(coord.bh_spin, x1i, x2i, x3i, &r_i, &th, &phi);
-        GetBoyerLindquistCoordinates(coord.bh_spin, x1o, x2o, x3o, &r_o, &th, &phi);
-        //Determine whether the meshblock with index m has cells within the spherical shell
-        mb_for_injection[m] = ( mb_for_injection[m] || ( r_o > min_rad && r_i < crit ) );
-        if (! (x3max == 0.0 || x3min == 0.0) ){
-          mb_for_injection[m] = false;
-        }
-        if (! (x2max == 0.0 || x2min == 0.0) ){
-          mb_for_injection[m] = false;
-        }
-        if ( (size.d_view(m).x1min < 0.0) ){
-          mb_for_injection[m] = false;
-        }
-        if ( mb_for_injection[m] ) { ++mb_count; }
-      }, Kokkos::Sum<int>(mbs_in_shell) );
-      
-      is_crit_satisfied = ( mbs_in_shell > 0 );
-      std::cout << "MBs in shell: " << mbs_in_shell << std::endl;
-
-      if ( ! is_crit_satisfied ) {
+      if ( num_good_cells==0 ) {
+        auto &pr = pmbp->ppart->prtcl_rdata;
+        auto &pi = pmbp->ppart->prtcl_idata;
+        int &npart = pmbp->ppart->nprtcl_thispack;
         npart = 0;
         Kokkos::realloc(pr, pmbp->ppart->nrdata, 0);
         Kokkos::realloc(pi, pmbp->ppart->nidata, 0);
-        std::cout << "None of the MBs on this rank satisfy the injection criterium. Deleted particles."<< std::endl;
+        std::cout << "None of the MBs on rank " << global_variable::my_rank << " satisfy the injection criterium. Deleted particles."<< std::endl;
       } else {
-
         Kokkos::Random_XorShift64_Pool<> prtcl_rand(gids);
         Real L = pin->GetOrAddReal("particles", "angular_momentum", 0.0); 
         Real E = pin->GetOrAddReal("particles", "energy", 0.0); 
@@ -219,130 +167,103 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           KOKKOS_LAMBDA(const int p){
             bool found_mb = false;
             auto prtcl_gen = prtcl_rand.get_state();
-            while(!found_mb){
-              int m = static_cast<int>(prtcl_gen.frand()*(gide-gids+1.0));
-              while ( !mb_for_injection[m] ) {
-                m = static_cast<int>(prtcl_gen.frand()*(gide-gids+1.0));
+            const int cc = static_cast<int>(prtcl_gen.frand()*num_good_cells);
+            const int m = only_good_cells(cc,0);
+            const int k = only_good_cells(cc,1);
+            const int j = only_good_cells(cc,2);
+            const int i = only_good_cells(cc,3);
+            const Real x1min = size.d_view(m).x1min;
+            const Real x1max = size.d_view(m).x1max;
+            const Real x2min = size.d_view(m).x2min;
+            const Real x2max = size.d_view(m).x2max;
+            const Real x3min = size.d_view(m).x3min;
+            const Real x3max = size.d_view(m).x3max;
+            Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
+            Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
+            Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
+            Real r, th, phi;
+            GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &th, &phi);
+            if (monopole){
+              if (!is_gca) {
+                pr(IPVX,p) = 0.0; 	
+                pr(IPVY,p) = 0.0; 	
+                pr(IPVZ,p) = 0.0; 	
+              } else {
+                // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
+                pr(IPVX,p) = sqrt(max_en);
+                pr(IPVY,p) = min_en;
               }
-              // First check that the meshblock is within the disk, and then outside the horizon
-              Real &x1min = size.d_view(m).x1min;
-              Real &x1max = size.d_view(m).x1max;
-              Real x1v = x1min + prtcl_gen.frand()*(x1max - x1min);
-              Real &x2min = size.d_view(m).x2min;
-              Real &x2max = size.d_view(m).x2max;
-              Real x2v = x2min + prtcl_gen.frand()*(x2max - x2min); 
-              Real &x3min = size.d_view(m).x3min;
-              Real &x3max = size.d_view(m).x3max;
-              Real x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
-              if (x3max == 0.0 || x3min == 0.0 ){
-                x3v = 0.0;
-              }
-              if (x2max == 0.0 || x2min == 0.0 ){
-                x2v = 0.0;
-              }
-              Real r, th, phi;
-              GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &th, &phi);
-              if (r >= min_rad){
-                int try_this_mb = 0;
-                while ( (x1v < 0.0) || ( r < min_rad || r > crit ) && try_this_mb <= try_lim ) {
-                  x1v = x1min + prtcl_gen.frand()*(x1max - x1min);
-                  x2v = x2min + prtcl_gen.frand()*(x2max - x2min);
-                  x3v = x3min + prtcl_gen.frand()*(x3max - x3min);
-                  if (x3max == 0.0 || x3min == 0.0 ){
-                    x3v = 0.0;
-                  }
-                  if (x2max == 0.0 || x2min == 0.0 ){
-                    x2v = 0.0;
-                  }
-                  GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &th, &phi);
-                  ++try_this_mb;
-                }
-                if (try_this_mb >= try_lim) {
-                  continue;
-                }
-                found_mb = true;
-                if (monopole){
-                  if (!is_gca) {
-                    pr(IPVX,p) = 0.0; 	
-                    pr(IPVY,p) = 0.0; 	
-                    pr(IPVZ,p) = 0.0; 	
-                  } else {
-                    // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
-                    pr(IPVX,p) = sqrt(max_en);
-                    pr(IPVY,p) = min_en;
-                  }
-                } else {
-                  if (!is_gca) {
-                    // Get components of velocity based on ang momentum and energy
-                    // Covariant vectors in BL coordinates
-                    Real cos2 = SQR(cos(th));
-                    Real sin2 = SQR(sin(th));
-                    Real r2 = SQR(r);
-                    Real asqr = SQR(coord.bh_spin);
-                    Real dd = (r2+asqr*cos2);
-                    Real delta = r2 - 2.0*r + asqr;
-                    Real A = SQR(r2 + asqr) - asqr*delta*sin2;
-                    Real g00 = -A/(dd*delta);
-                    Real g11 = delta/dd;
-                    Real g22 = 1.0/dd;
-                    Real g33 = (delta-asqr*sin2)/(dd*delta*sin2);
-                    Real g03 = -2.0*r*coord.bh_spin/(delta*dd);
+            } else {
+              if (!is_gca) {
+                // Get components of velocity based on ang momentum and energy
+                // Covariant vectors in BL coordinates
+                Real cos2 = SQR(cos(th));
+                Real sin2 = SQR(sin(th));
+                Real r2 = SQR(r);
+                Real asqr = SQR(coord.bh_spin);
+                Real dd = (r2+asqr*cos2);
+                Real delta = r2 - 2.0*r + asqr;
+                Real A = SQR(r2 + asqr) - asqr*delta*sin2;
+                // Upper metric components
+                Real g00 = -(r2+asqr+2.0*r*asqr*sin2/dd)/delta;
+                Real g11 = delta/dd;
+                Real g22 = 1.0/dd;
+                Real g33 = (delta-asqr*sin2)/(dd*delta*sin2);
+                Real g03 = -2.0*r*coord.bh_spin/(delta*dd);
+                // Lower metric components
+                Real g_00 = -(1.0 - 2.0*r/dd);
+                Real g_11 = 1.0/g11;
+                Real g_22 = 1.0/g22;
+                Real g_33 = sin2*(r2 + asqr + sin2*2.0*r*asqr/dd);
+                Real g_03 = -2.0*r*coord.bh_spin*sin2/dd;
 
-                    Real u_0 = - E - q_over_m*A0(dpl, coord.bh_spin, x1v, x2v, x3v);
-                    Real u_ph = L - q_over_m*A3(dpl, coord.bh_spin, x1v, x2v, x3v);
-                    Real u_r = 0.0;
-                    Real u_th = 0.0;
-                    Real t_chi = tan(chi);
-                    u_r = - 1.0 - g33*SQR(u_ph) - 2.0*g03*u_0*u_ph - g00*SQR(u_0);
-                    u_r = sqrt( u_r/( g11*(1.0+SQR(t_chi)*g11/g22) ) );
-                    u_th = t_chi*g11*u_r/g22;
-                    
-                    Real tmp0 = g00*u_0 + g03*u_ph;
-                    Real tmp1 = g11*u_r;
-                    Real tmp2 = g22*u_th;
-                    Real tmp3 = g03*u_0 + g33*u_ph;
-                    // Convert to cartesian
-                    Real uc0, uc1, uc2, uc3;
-                    TransformVector(coord.bh_spin, tmp0, tmp1, tmp2, tmp3,
-                          x1v, x2v, x3v, &uc0, &uc1, &uc2, &uc3);
-                    
-                    Real gu[4][4], gl[4][4];
-                    ComputeMetricAndInverse(x1v,x2v,x3v, coord.is_minkowski, coord.bh_spin, gl, gu); 
-                    tmp0 = gl[0][0]*uc0 + gl[0][1]*uc1 + gl[0][2]*uc2 + gl[0][3]*uc3;
-                    tmp1 = gl[1][0]*uc0 + gl[1][1]*uc1 + gl[1][2]*uc2 + gl[1][3]*uc3;
-                    tmp2 = gl[2][0]*uc0 + gl[2][1]*uc1 + gl[2][2]*uc2 + gl[2][3]*uc3;
-                    tmp3 = gl[3][0]*uc0 + gl[3][1]*uc1 + gl[3][2]*uc2 + gl[3][3]*uc3;
+                Real u_0 = - E - q_over_m*A0(dpl, coord.bh_spin, x1v, x2v, x3v);
+                Real u_ph = L - q_over_m*A3(dpl, coord.bh_spin, x1v, x2v, x3v);
+                // Raise indeces
+                Real tmp0, tmp1, tmp2, tmp3;
+                tmp0 = g00*u_0 + g03*u_ph;
+                tmp3 = g03*u_0 + g33*u_ph;
+                Real u_r = 0.0;
+                Real u_th = 0.0;
+                Real t_chi = tan(chi);
+                // These are upper components
+                u_r = sqrt( (-1.0 - SQR(tmp0)*g_00 - 2.0*tmp0*tmp3*g_03 - SQR(tmp3)*g_33) / (g_11 + SQR(t_chi)*g_22) );
+                u_th = t_chi*u_r;
+                
+                // Convert to cartesian
+                Real uc0, uc1, uc2, uc3;
+                TransformVector(coord.bh_spin, tmp0, u_r, u_th, tmp3,
+                      x1v, x2v, x3v, &uc0, &uc1, &uc2, &uc3);
+                
+                Real gu[4][4], gl[4][4];
+                ComputeMetricAndInverse(x1v,x2v,x3v, coord.is_minkowski, coord.bh_spin, gl, gu); 
+                tmp0 = gl[0][0]*uc0 + gl[0][1]*uc1 + gl[0][2]*uc2 + gl[0][3]*uc3;
+                tmp1 = gl[1][0]*uc0 + gl[1][1]*uc1 + gl[1][2]*uc2 + gl[1][3]*uc3;
+                tmp2 = gl[2][0]*uc0 + gl[2][1]*uc1 + gl[2][2]*uc2 + gl[2][3]*uc3;
+                tmp3 = gl[3][0]*uc0 + gl[3][1]*uc1 + gl[3][2]*uc2 + gl[3][3]*uc3;
 
-                    // Store lower cartesian components
-                    pr(IPVX,p) = tmp1;
-                    pr(IPVY,p) = tmp2; 	
-                    pr(IPVZ,p) = tmp3; 	
-                  } else {
-                    // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
-                    pr(IPVX,p) = sqrt(max_en);
-                    pr(IPVY,p) = min_en;
-                  }
-                }
-                pi(PGID,p) = gids+m;
-                pr(IPX,p) = x1v;
-                pr(IPY,p) = x2v;
-                pr(IPZ,p) = x3v;
+                // Store lower cartesian components
+                pr(IPVX,p) = tmp1;
+                pr(IPVY,p) = tmp2; 	
+                pr(IPVZ,p) = tmp3; 	
+              } else {
+                // For GCA the prtcl_energy_max actually acts to set the gamma factor/energy
+                pr(IPVX,p) = sqrt(max_en);
+                pr(IPVY,p) = min_en;
               }
             }
+            pi(PGID,p) = gids+m;
+            pr(IPX,p) = x1v;
+            pr(IPY,p) = x2v;
+            pr(IPZ,p) = x3v;
             prtcl_rand.free_state(prtcl_gen);
         });
         std::cout << "Injected " << npart << " particles." << std::endl;
       }
     }
-    // set timestep (which will remain constant for entire run
-    // Assumes uniform mesh (no SMR or AMR)
-    // Assumes velocities normalized to one, so dt=min(dx)
-    Real &dtnew_ = pmbp->ppart->dtnew;
-    dtnew_ = std::min(size.h_view(0).dx1, size.h_view(0).dx2);
-    dtnew_ = std::min(dtnew_, size.h_view(0).dx3);
-    dtnew_ *= pin->GetOrAddReal("time", "cfl_number", 0.8);
-    pmbp->pmesh->dt = dtnew_;
+    pmbp->pmesh->UpdatePrtclInfo();
   }
+  pmbp->pmesh->dt = 1.0; // Hard-coded
 
   // return if restart
   if (restart) return;
@@ -353,7 +274,6 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   w0_ = pmbp->pmhd->w0;
 
   // initialize primitive variables for new run ---------------------------------------
-
   Real r_s = 3.0;
   Real R_LC = 10.0*r_s;
   auto &size = pmbp->pmb->mb_size;
@@ -365,7 +285,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   int n3 = (indcs.nx3 > 1)? (indcs.nx3 + 2*ng) : 1;
 
   if (monopole) {
-    par_for("pgen_monopole", DevExeSpace(),0,(nmb-1),0,(n3-1),0,(n2-1),0,(n1-1),
+    par_for("pgen_monopole", DevExeSpace(),0,(nmb-1),ks,ke+1,js,je+1,is,ie+1,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
 
       Real &x1min = size.d_view(m).x1min;
@@ -485,27 +405,27 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         }
       }
     });
-
-  } else {
+  } else { // not monopole, i.e. dipole
     DvceArray4D<Real> a0, a1, a2, a3;
     Kokkos::realloc(a0,nmb,n3,n2,n1);
     Kokkos::realloc(a1,nmb,n3,n2,n1);
     Kokkos::realloc(a2,nmb,n3,n2,n1);
     Kokkos::realloc(a3,nmb,n3,n2,n1);
 
-    par_for("pgen_dipole", DevExeSpace(),0,(nmb-1),0,(n3-1),0,(n2-1),0,(n1-1),
+    par_for("pgen_dipole", DevExeSpace(),0,(nmb-1),ks,ke+1,js,je+1,is,ie+1,
     KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
 
       Real &x1min = size.d_view(m).x1min;
       Real &x1max = size.d_view(m).x1max;
-      Real x1v = LeftEdgeX(i-is, indcs.nx1, x1min, x1max);
+      Real x1v = CellCenterX(i-is, indcs.nx1, x1min, x1max);
       Real &x2min = size.d_view(m).x2min;
       Real &x2max = size.d_view(m).x2max;
-      Real x2v = LeftEdgeX(j-js, indcs.nx2, x2min, x2max);
+      Real x2v = CellCenterX(j-js, indcs.nx2, x2min, x2max);
       Real &x3min = size.d_view(m).x3min;
       Real &x3max = size.d_view(m).x3max;
-      Real x3v = LeftEdgeX(k-ks, indcs.nx3, x3min, x3max);
+      Real x3v = CellCenterX(k-ks, indcs.nx3, x3min, x3max);
 
+      // A0 and A3 are given in spherical BL
       Real r, theta, phi;
       GetBoyerLindquistCoordinates(coord.bh_spin, x1v, x2v, x3v, &r, &theta, &phi);
       Real cos2 = SQR(cos(theta));
@@ -515,11 +435,13 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       Real dd = (r2+asqr*cos2);
       Real delta = r2 - 2.0*r + asqr;
       Real A = SQR(r2 + asqr) - asqr*delta*sin2;
-      Real g00 = -A/(dd*delta);
+      // Upper metric components
+      Real g00 = -(r2+asqr+2.0*r*asqr*sin2/dd)/delta;
       Real g11 = delta/dd;
       Real g22 = 1.0/dd;
       Real g33 = (delta-asqr*sin2)/(dd*delta*sin2);
       Real g03 = -2.0*r*coord.bh_spin/(delta*dd);
+      // Raise indeces on potential 4-vector for use with TransformVector
       Real tmp0 = g00*A0(dpl, coord.bh_spin, x1v, x2v, x3v) + g03*A3(dpl, coord.bh_spin, x1v, x2v, x3v);
       Real tmp1 = 0.0;
       Real tmp2 = 0.0;
@@ -529,15 +451,11 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
             x1v, x2v, x3v, &uc0, &uc1, &uc2, &uc3);
 	    Real gu[4][4], gl[4][4];
 	    ComputeMetricAndInverse(x1v,x2v,x3v, coord.is_minkowski, coord.bh_spin, gl, gu); 
-      Real u0 = gl[0][0]*uc0 + gl[0][1]*uc1 + gl[0][2]*uc2 + gl[0][3]*uc3;
-      Real u1 = gl[1][0]*uc0 + gl[1][1]*uc1 + gl[1][2]*uc2 + gl[1][3]*uc3;
-      Real u2 = gl[2][0]*uc0 + gl[2][1]*uc1 + gl[2][2]*uc2 + gl[2][3]*uc3;
-      Real u3 = gl[3][0]*uc0 + gl[3][1]*uc1 + gl[3][2]*uc2 + gl[3][3]*uc3;
-
-      a0(m,k,j,i) = u0;
-      a1(m,k,j,i) = u1;
-      a2(m,k,j,i) = u2;
-      a3(m,k,j,i) = u3;
+      // Store covariant 4-potential vector
+      a0(m,k,j,i) = gl[0][0]*uc0 + gl[0][1]*uc1 + gl[0][2]*uc2 + gl[0][3]*uc3;
+      a1(m,k,j,i) = gl[1][0]*uc0 + gl[1][1]*uc1 + gl[1][2]*uc2 + gl[1][3]*uc3;
+      a2(m,k,j,i) = gl[2][0]*uc0 + gl[2][1]*uc1 + gl[2][2]*uc2 + gl[2][3]*uc3;
+      a3(m,k,j,i) = gl[3][0]*uc0 + gl[3][1]*uc1 + gl[3][2]*uc2 + gl[3][3]*uc3;
 
       r = sqrt(SQR(x1v) + SQR(x2v) + SQR(x3v));
       phi = atan2(x2v, x1v);
@@ -568,7 +486,6 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
       w0_(m,IVX,k,j,i) = uu1;
       w0_(m,IVY,k,j,i) = uu2;
       w0_(m,IVZ,k,j,i) = uu3;
-
     });
 
     par_for("pgen_b0", DevExeSpace(), 0,nmb-1,ks,ke,js,je,is,ie,
@@ -598,19 +515,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         Real dx1 = size.d_view(m).dx1;
         Real dx2 = size.d_view(m).dx2;
         Real dx3 = size.d_view(m).dx3;
-        Real gu[4][4], gl[4][4], adm[3][3];
-        ComputeMetricAndInverse(x1v,x2v,x3v, coord.is_minkowski, coord.bh_spin, gl, gu); 
-        GetUpperAdmMetric( gu, adm );
-        Real adm_det; 
-        ComputeDeterminant3( adm, adm_det );
-        adm_det = sqrt(adm_det);
 
-        // Gets components F_0i
-        Real f01 = -(a0(m,k,j,i+1) - a0(m,k,j,i))/dx1;
-        Real f02 = -(a0(m,k,j+1,i) - a0(m,k,j,i))/dx2;
-        Real f03 = -(a0(m,k+1,j,i) - a0(m,k,j,i))/dx3;
-
-        // Gets components F_ij
+        // Get components F_ij
         // f13 has already opposite sign
         Real f23 = ((a3(m,k,j+1,i) - a3(m,k,j,i))/dx2 -
                    (a2(m,k+1,j,i) - a2(m,k,j,i))/dx3);
@@ -619,21 +525,28 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         Real f12 = ((a2(m,k,j,i+1) - a2(m,k,j,i))/dx1 -
                    (a1(m,k,j+1,i) - a1(m,k,j,i))/dx2);
 
-        // Get upper E
-        e0.x1e(m,k,j,i) = - (adm[0][0]*f01 + adm[0][1]*f02 + adm[0][2]*f03);
-        e0.x2e(m,k,j,i) = - (adm[1][0]*f01 + adm[1][1]*f02 + adm[1][2]*f03);
-        e0.x3e(m,k,j,i) = - (adm[2][0]*f01 + adm[2][1]*f02 + adm[2][2]*f03);
+        // Store B
+        // This is consistent with AthenaK storing *F^0i
+        b0.x1f(m,k,j,i) = f23;
+        b0.x2f(m,k,j,i) = f13; // This has already opposite sign
+        b0.x3f(m,k,j,i) = f12;
 
-        // Get upper B
-        b0.x1f(m,k,j,i) = f23*adm_det;//adm[0][0]*f23 +  adm[0][1]*f13 + adm[0][2]*f12;
-        b0.x2f(m,k,j,i) = f13*adm_det;//adm[1][0]*f23 +  adm[1][1]*f13 + adm[1][2]*f12;
-        b0.x3f(m,k,j,i) = f12*adm_det;//adm[2][0]*f23 +  adm[2][1]*f13 + adm[2][2]*f12;
+        // Get components F_i0
+        Real f01 = (a0(m,k,j,i+1) - a0(m,k,j,i))/dx1;
+        Real f02 = (a0(m,k,j+1,i) - a0(m,k,j,i))/dx2;
+        Real f03 = (a0(m,k+1,j,i) - a0(m,k,j,i))/dx3;
+
+        // Store E
+        // This is consistent with AthenaK storing *F^jk
+        e0.x1e(m,k,j,i) = f01;
+        e0.x2e(m,k,j,i) = f02;
+        e0.x3e(m,k,j,i) = f03;
 
         // Include extra face-component at edge of block in each direction
         if (i==ie) {
-          f01 = -(a0(m,k,j,i+2) - a0(m,k,j,i+1))/dx1;
-          f02 = -(a0(m,k,j+1,i+1) - a0(m,k,j,i+1))/dx2;
-          f03 = -(a0(m,k+1,j,i+1) - a0(m,k,j,i+1))/dx3;
+          f01 = (a0(m,k,j,i+2) - a0(m,k,j,i+1))/dx1;
+          f02 = (a0(m,k,j+1,i+1) - a0(m,k,j,i+1))/dx2;
+          f03 = (a0(m,k+1,j,i+1) - a0(m,k,j,i+1))/dx3;
 
           f23 = ((a3(m,k,j+1,i+1) - a3(m,k,j,i+1))/dx2 -
                 (a2(m,k+1,j,i+1) - a2(m,k,j,i+1))/dx3);
@@ -642,17 +555,17 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           f12 = ((a2(m,k,j,i+2) - a2(m,k,j,i+1))/dx1 -
                 (a1(m,k,j+1,i+1) - a1(m,k,j,i+1))/dx2);
 
-          e0.x1e(m,k,j,i+1) = - (adm[0][0]*f01 + adm[0][1]*f02 + adm[0][2]*f03);
-          e0.x2e(m,k,j,i+1) = - (adm[1][0]*f01 + adm[1][1]*f02 + adm[1][2]*f03);
-          e0.x3e(m,k,j,i+1) = - (adm[2][0]*f01 + adm[2][1]*f02 + adm[2][2]*f03);
-          b0.x1f(m,k,j,i+1) = f23*adm_det;//gu[1][1]*f23 +  gu[1][2]*f13 + gu[1][3]*f12;
-          b0.x2f(m,k,j,i+1) = f13*adm_det;//gu[2][1]*f23 +  gu[2][2]*f13 + gu[2][3]*f12;
-          b0.x3f(m,k,j,i+1) = f12*adm_det;//gu[3][1]*f23 +  gu[3][2]*f13 + gu[3][3]*f12;
+          e0.x1e(m,k,j,i+1) = f01;
+          e0.x2e(m,k,j,i+1) = f02;
+          e0.x3e(m,k,j,i+1) = f03;
+          b0.x1f(m,k,j,i+1) = f23;
+          b0.x2f(m,k,j,i+1) = f13;
+          b0.x3f(m,k,j,i+1) = f12;
         }
         if (j==je) {
-          f01 = -(a0(m,k,j+1,i+1) - a0(m,k,j+1,i))/dx1;
-          f02 = -(a0(m,k,j+2,i) - a0(m,k,j+1,i))/dx2;
-          f03 = -(a0(m,k+1,j+1,i) - a0(m,k,j+1,i))/dx3;
+          f01 = (a0(m,k,j+1,i+1) - a0(m,k,j+1,i))/dx1;
+          f02 = (a0(m,k,j+2,i) - a0(m,k,j+1,i))/dx2;
+          f03 = (a0(m,k+1,j+1,i) - a0(m,k,j+1,i))/dx3;
 
           f23 = ((a3(m,k,j+2,i) - a3(m,k,j+1,i))/dx2 -
                 (a2(m,k+1,j+1,i) - a2(m,k,j+1,i))/dx3);
@@ -661,17 +574,17 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           f12 = ((a2(m,k,j+1,i+1) - a2(m,k,j+1,i))/dx1 -
                 (a1(m,k,j+2,i) - a1(m,k,j+1,i))/dx2);
 
-          e0.x1e(m,k,j+1,i) = - (adm[0][0]*f01 + adm[0][1]*f02 + adm[0][2]*f03);
-          e0.x2e(m,k,j+1,i) = - (adm[1][0]*f01 + adm[1][1]*f02 + adm[1][2]*f03);
-          e0.x3e(m,k,j+1,i) = - (adm[2][0]*f01 + adm[2][1]*f02 + adm[2][2]*f03);
-          b0.x1f(m,k,j+1,i) = f23*adm_det;//gu[1][1]*f23 +  gu[1][2]*f13 + gu[1][3]*f12;
-          b0.x2f(m,k,j+1,i) = f13*adm_det;//gu[2][1]*f23 +  gu[2][2]*f13 + gu[2][3]*f12;
-          b0.x3f(m,k,j+1,i) = f12*adm_det;//gu[3][1]*f23 +  gu[3][2]*f13 + gu[3][3]*f12;
+          e0.x1e(m,k,j+1,i) = f01;
+          e0.x2e(m,k,j+1,i) = f02;
+          e0.x3e(m,k,j+1,i) = f03;
+          b0.x1f(m,k,j+1,i) = f23;
+          b0.x2f(m,k,j+1,i) = f13;
+          b0.x3f(m,k,j+1,i) = f12;
         }
         if (k==ke) {
-          f01 = -(a0(m,k+1,j,i+1) - a0(m,k+1,j,i))/dx1;
-          f02 = -(a0(m,k+1,j+1,i) - a0(m,k+1,j,i))/dx2;
-          f03 = -(a0(m,k+2,j,i) - a0(m,k+1,j,i))/dx3;
+          f01 = (a0(m,k+1,j,i+1) - a0(m,k+1,j,i))/dx1;
+          f02 = (a0(m,k+1,j+1,i) - a0(m,k+1,j,i))/dx2;
+          f03 = (a0(m,k+2,j,i) - a0(m,k+1,j,i))/dx3;
 
           f23 = ((a3(m,k+1,j+1,i) - a3(m,k+1,j,i))/dx2 -
                 (a2(m,k+2,j,i) - a2(m,k+1,j,i))/dx3);
@@ -680,12 +593,12 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
           f12 = ((a2(m,k+1,j,i+1) - a2(m,k+1,j,i))/dx1 -
                 (a1(m,k+1,j+1,i) - a1(m,k+1,j,i))/dx2);
 
-          e0.x1e(m,k+1,j,i) = - (adm[0][0]*f01 + adm[0][1]*f02 + adm[0][2]*f03);
-          e0.x2e(m,k+1,j,i) = - (adm[1][0]*f01 + adm[1][1]*f02 + adm[1][2]*f03);
-          e0.x3e(m,k+1,j,i) = - (adm[2][0]*f01 + adm[2][1]*f02 + adm[2][2]*f03);
-          b0.x1f(m,k+1,j,i) = f23*adm_det;//gu[1][1]*f23 + gu[1][2]*f13 + gu[1][3]*f12;
-          b0.x2f(m,k+1,j,i) = f13*adm_det;//gu[2][1]*f23 + gu[2][2]*f13 + gu[2][3]*f12;
-          b0.x3f(m,k+1,j,i) = f12*adm_det;//gu[3][1]*f23 + gu[3][2]*f13 + gu[3][3]*f12;
+          e0.x1e(m,k+1,j,i) = f01;
+          e0.x2e(m,k+1,j,i) = f02;
+          e0.x3e(m,k+1,j,i) = f03;
+          b0.x1f(m,k+1,j,i) = f23;
+          b0.x2f(m,k+1,j,i) = f13;
+          b0.x3f(m,k+1,j,i) = f12;
         }
       }
     });
@@ -707,32 +620,11 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // Convert primitives to conserved
   auto &bcc0_ = pmbp->pmhd->bcc0;
   pmbp->pmhd->peos->PrimToCons(w0_, bcc0_, u0_, is, ie, js, je, ks, ke);
-  
 
   return;
 }
 
 namespace {
-//----------------------------------------------------------------------------------------
-// Function for returning corresponding Boyer-Lindquist coordinates of point
-// Inputs:
-//   x1,x2,x3: global coordinates to be converted
-// Outputs:
-//   pr,ptheta,pphi: variables pointed to set to Boyer-Lindquist coordinates
-
-KOKKOS_INLINE_FUNCTION
-static void GetBoyerLindquistCoordinates(Real spin,
-                                         Real x1, Real x2, Real x3,
-                                         Real *pr, Real *ptheta, Real *pphi) {
-  Real rad = sqrt(SQR(x1) + SQR(x2) + SQR(x3));
-  Real r = fmax((sqrt( SQR(rad) - SQR(spin) + sqrt(SQR(SQR(rad)-SQR(spin))
-                      + 4.0*SQR(spin)*SQR(x3)) ) / sqrt(2.0)), 1.0);
-  *pr = r;
-  *ptheta = (fabs(x3/r) < 1.0) ? acos(x3/r) : acos(copysign(1.0, x3));
-  *pphi = atan2(r*x2-spin*x1, spin*x2+r*x1) -
-          spin*r/(SQR(r)-2.0*r+SQR(spin));
-  return;
-}
 
 //----------------------------------------------------------------------------------------
 // Function for transforming 4-vector from Boyer-Lindquist to desired coordinates

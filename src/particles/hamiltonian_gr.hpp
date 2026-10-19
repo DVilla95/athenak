@@ -436,104 +436,46 @@ void GRLorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const 
      const bool is_minkowski, const Real spin, const Real q_over_m,
      Real * RHS ){
 	
-  // Co-variant 4-velocity in the coordinate frame
-  // To have compatibility with GR the velocity stored should be the covariant one
-  Real u_cov[3];
-  Real x[3]; // Position.
-  for (int i = 0; i<3; ++i) {
-    u_cov[i] = u_s[i];
-    x[i] = x_s[i];
-  }
   // Get metric components at starting location x1,x2,x3
   Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
-                 // (remember: sqrt(-1/gupper[0][0]) = alpha)
-  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
+  ComputeMetricAndInverse(x_s[0],x_s[1],x_s[2], is_minkowski, spin, glower, gupper); 
   // Compute 3x3 ADM spatial metric from metric 
   GetUpperAdmMetric( gupper, adm );
-  // Determinant of metric needed for vector products
-  Real adm_det; 
-  ComputeDeterminant3( adm, adm_det );
-  // Determinant needed is that of covariant metric
-  adm_det = 1.0/adm_det;
-  adm_det = sqrt(adm_det);
-
-  // Electric field is stored in fluid frame, need to combine with B to operate on velocity
-  Real a_vec[3] = {
-    - gupper[0][2]/gupper[0][0]*B[2] + B[1]*gupper[0][3]/gupper[0][0],
-    - gupper[0][3]/gupper[0][0]*B[0] + B[2]*gupper[0][1]/gupper[0][0],
-    - gupper[0][1]/gupper[0][0]*B[1] + B[0]*gupper[0][2]/gupper[0][0]
-  };
-  for (int i = 0; i < 3; ++i ){ a_vec[i] *= adm_det; }
-  Real u_con[3] = {0.0};
-  for (int i1 = 0; i1 < 3; ++i1 ){ 
-    for (int i2 = 0; i2 < 3; ++i2 ){ 
-    u_con[i1] += adm[i1][i2]*a_vec[i2];
-    }
-  }
-  //Lower indeces of E to covariant for velocity push
-  for (int i = 0; i<3; ++i)
-    a_vec[i] = E[i] - u_con[i];
-  Real push[3];
-  for (int i = 0; i<3; ++i)
-    push[i] = glower[i+1][1]*a_vec[0] + glower[i+1][2]*a_vec[1] + glower[i+1][3]*a_vec[2];
 
   Real u0;
   //Lorentz factor in Normal frame
-  u0 = adm[0][0]*SQR(u_cov[0]) + adm[1][1]*SQR(u_cov[1]) + adm[2][2]*SQR(u_cov[2])
-    + 2.0*adm[0][1]*u_cov[0]*u_cov[1] + 2.0*adm[0][2]*u_cov[0]*u_cov[2] + 2.0*adm[1][2]*u_cov[1]*u_cov[2];
+  u0 = adm[0][0]*SQR(u_s[0]) + adm[1][1]*SQR(u_s[1]) + adm[2][2]*SQR(u_s[2])
+    + 2.0*adm[0][1]*u_s[0]*u_s[1] + 2.0*adm[0][2]*u_s[0]*u_s[2] + 2.0*adm[1][2]*u_s[1]*u_s[2];
   // In principle the 1.0 should be replaced by a 0 if
   // the particle is massless, but I don't know of 
   // any massless particle that can interact with an 
   // electromagnetic field (unless one goes into quantum mechanics)
   // Convert to Lorentz factor in coordinate frame i.e u^0
-  u0 = sqrt(1.0 + u0)*sqrt(-gupper[0][0]);
+  Real alpha = sqrt(-1.0/gupper[0][0]);
+  u0 = sqrt(1.0 + u0)/alpha;
 
-  //Lower indeces to covariant
+  //Raise indeces to contravariant and recover 4-velocity components in coordinate frame by subtracting \beta^i
+  Real u_con[3] = {0.0};
   for (int i1 = 0; i1 < 3; ++i1 ){ 
-    u_con[i1] = 0.0;
     for (int i2 = 0; i2 < 3; ++i2 ){ 
-    u_con[i1] += adm[i1][i2]*u_cov[i2];
+      u_con[i1] += adm[i1][i2]*u_s[i2];
     }
-    u_con[i1] /= u0;
+    u_con[i1] += gupper[0][i1+1]/gupper[0][0]*u0;
   }
 
-  Real push2[3] = {
+  // This vector is divided by the determinant of the ADM 3-metric in Bacchini et al. 2019
+  // This is, however, because they store and the electric and magnetic fields in the local FIDO observer.
+  // In cartesian KS, this would be equivalent to multiplying by alpha (sqrt(-g) = alpha sqrt(gamma))
+  // and sqrt(-g) = 1, but since the fields are stored in the coordinate frame, no factor is needed
+  Real pushB[3] = {
     u_con[1]*B[2] - u_con[2]*B[1],
     u_con[2]*B[0] - u_con[0]*B[2],
     u_con[0]*B[1] - u_con[1]*B[0]
   };
-  // Used a vector product, correct for volume
-  for (int i = 0; i < 3; ++i )
-    push2[i] *= adm_det;
 
-  for (int i = 0; i<3; ++i)
-    RHS[i] += q_over_m*(push[i] + push2[i]);
-
-	return;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  void PushPosition
-//  \brief Basic position push RHS
-KOKKOS_INLINE_FUNCTION
-void GRRHSPosition( const Real * x, const Real * u, const bool is_minkowski, const Real spin, Real * RHS ){
-	
-  Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
-  Real gamma;
-  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
-  GetUpperAdmMetric( gupper, adm );
-  gamma = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
-    + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
-  gamma = sqrt(1.0 + gamma)*sqrt(-gupper[0][0]);
-  RHS[0] = adm[0][0]*u[0] + adm[0][1]*u[1] + adm[0][2]*u[2];
-  RHS[1] = adm[1][0]*u[0] + adm[1][1]*u[1] + adm[1][2]*u[2];
-  RHS[2] = adm[2][0]*u[0] + adm[2][1]*u[1] + adm[2][2]*u[2];
-  RHS[0] /= gamma;
-  RHS[1] /= gamma;
-  RHS[2] /= gamma;
-  RHS[0] += gupper[0][1]/gupper[0][0];
-  RHS[1] += gupper[0][2]/gupper[0][0];
-  RHS[2] += gupper[0][3]/gupper[0][0];
+  // AthenaK stores as "electric field" *F^jk
+  // Conversion to F_i0 is not needed in cartesian KS
+  for (int i = 0; i<3; ++i) { RHS[i] += q_over_m*(E[i] + pushB[i]/u0); }
 
 	return;
 }
@@ -591,92 +533,6 @@ void GRRHSVelocity( const Real * x, const Real * u, const bool is_minkowski, con
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn  void Lorentz_Terms
-//  \brief
-KOKKOS_INLINE_FUNCTION
-void GRLorentz_Terms( const Real * x_s, const Real * u_s, const Real * E, const Real * B, 
-     const bool is_minkowski, const Real spin, const Real q_over_m,
-     Real * RHS ){
-	
-  // Co-variant 4-velocity in the coordinate frame
-  // To have compatibility with GR the velocity stored should be the covariant one
-  Real u_cov[3];
-  Real x[3]; // Position.
-  for (int i = 0; i<3; ++i) {
-    u_cov[i] = u_s[i];
-    x[i] = x_s[i];
-  }
-  // Get metric components at starting location x1,x2,x3
-  Real glower[4][4], gupper[4][4], adm[3][3]; // Metric 
-                 // (remember: sqrt(-1/gupper[0][0]) = alpha)
-  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, glower, gupper); 
-  // Compute 3x3 ADM spatial metric from metric 
-  GetUpperAdmMetric( gupper, adm );
-  // Determinant of metric needed for vector products
-  Real adm_det; 
-  ComputeDeterminant3( adm, adm_det );
-  // Determinant needed is that of covariant metric
-  adm_det = 1.0/adm_det;
-  adm_det = sqrt(adm_det);
-
-  // Electric field is stored in fluid frame, need to combine with B to operate on velocity
-  Real a_vec[3] = {
-    - gupper[0][2]/gupper[0][0]*B[2] + B[1]*gupper[0][3]/gupper[0][0],
-    - gupper[0][3]/gupper[0][0]*B[0] + B[2]*gupper[0][1]/gupper[0][0],
-    - gupper[0][1]/gupper[0][0]*B[1] + B[0]*gupper[0][2]/gupper[0][0]
-  };
-  for (int i = 0; i < 3; ++i ){ a_vec[i] *= adm_det; }
-  Real u_con[3] = {0.0};
-  for (int i1 = 0; i1 < 3; ++i1 ){ 
-    for (int i2 = 0; i2 < 3; ++i2 ){ 
-    u_con[i1] += adm[i1][i2]*a_vec[i2];
-    }
-  }
-  //Lower indeces of E to covariant for velocity push
-  a_vec[0] = E[0] - u_con[0];
-  a_vec[1] = E[1] - u_con[1];
-  a_vec[2] = E[2] - u_con[2];
-  Real push[3];
-  push[0] = glower[1][1]*a_vec[0] + glower[1][2]*a_vec[1] + glower[1][3]*a_vec[2];
-  push[1] = glower[2][1]*a_vec[0] + glower[2][2]*a_vec[1] + glower[2][3]*a_vec[2];
-  push[2] = glower[3][1]*a_vec[0] + glower[3][2]*a_vec[1] + glower[3][3]*a_vec[2];
-
-  Real u0;
-  //Lorentz factor in Normal frame
-  u0 = adm[0][0]*SQR(u_cov[0]) + adm[1][1]*SQR(u_cov[1]) + adm[2][2]*SQR(u_cov[2])
-    + 2.0*adm[0][1]*u_cov[0]*u_cov[1] + 2.0*adm[0][2]*u_cov[0]*u_cov[2] + 2.0*adm[1][2]*u_cov[1]*u_cov[2];
-  // In principle the 1.0 should be replaced by a 0 if
-  // the particle is massless, but I don't know of 
-  // any massless particle that can interact with an 
-  // electromagnetic field (unless one goes into quantum mechanics)
-  // Convert to Lorentz factor in coordinate frame i.e u^0
-  u0 = sqrt(1.0 + u0)*sqrt(-gupper[0][0]);
-
-  //Lower indeces to covariant
-  for (int i1 = 0; i1 < 3; ++i1 ){ 
-    u_con[i1] = 0.0;
-    for (int i2 = 0; i2 < 3; ++i2 ){ 
-    u_con[i1] += adm[i1][i2]*u_cov[i2];
-    }
-    u_con[i1] /= u0;
-  }
-
-  Real push2[3] = {
-    u_con[1]*B[2] - u_con[2]*B[1],
-    u_con[2]*B[0] - u_con[0]*B[2],
-    u_con[0]*B[1] - u_con[1]*B[0]
-  };
-  // Used a vector product, correct for volume
-  for (int i = 0; i < 3; ++i ){ push2[i] *= adm_det; }
-
-  RHS[0] += q_over_m*(push[0] + push2[0]);
-  RHS[1] += q_over_m*(push[1] + push2[1]);
-  RHS[2] += q_over_m*(push[2] + push2[2]);
-
-	return;
-}
-
-//----------------------------------------------------------------------------------------
 //! \fn  void PushPosition
 //  \brief Basic position push RHS
 KOKKOS_INLINE_FUNCTION
@@ -689,176 +545,13 @@ void GRRHSPosition( const Real * x, const Real * u, const bool is_minkowski, con
   gamma = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
     + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
   gamma = sqrt(1.0 + gamma)*sqrt(-gupper[0][0]);
-  RHS[0] = adm[0][0]*u[0] + adm[0][1]*u[1] + adm[0][2]*u[2];
-  RHS[1] = adm[1][0]*u[0] + adm[1][1]*u[1] + adm[1][2]*u[2];
-  RHS[2] = adm[2][0]*u[0] + adm[2][1]*u[1] + adm[2][2]*u[2];
-  RHS[0] /= gamma;
-  RHS[1] /= gamma;
-  RHS[2] /= gamma;
-  RHS[0] += gupper[0][1]/gupper[0][0];
-  RHS[1] += gupper[0][2]/gupper[0][0];
-  RHS[2] += gupper[0][3]/gupper[0][0];
-
-	return;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  void PushPosition
-//  \brief Basic position push RHS
-KOKKOS_INLINE_FUNCTION
-void GRRHSVelocity( const Real * x, const Real * u, const bool is_minkowski, const Real spin, Real * RHS ){
-	
-  Real gl[4][4], gu[4][4], adm[3][3]; // Metric 
-  Real dg_dx1[4][4], dg_dx2[4][4], dg_dx3[4][4]; //Metric derivatives
-  Real gamma;
-
-  ComputeMetricAndInverse(x[0],x[1],x[2], is_minkowski, spin, gl, gu); 
-  GetUpperAdmMetric( gu, adm );
-  gamma = adm[0][0]*SQR(u[0]) + adm[1][1]*SQR(u[1]) + adm[2][2]*SQR(u[2])
-    + 2.0*adm[0][1]*u[0]*u[1] + 2.0*adm[0][2]*u[0]*u[2] + 2.0*adm[1][2]*u[1]*u[2];
-  gamma = sqrt(1.0 + gamma);
-  bool get_upper = true;
-  ComputeMetricDerivatives(x[0], x[1], x[2], is_minkowski, spin, get_upper,
-                              dg_dx1, dg_dx2, dg_dx3);
-  Real (*dg_array[3])[4][4] = {&dg_dx1, &dg_dx2, &dg_dx3};
-
-  for (int dir = 0; dir<3; ++dir){
-    Real (&use_dx)[4][4] = *dg_array[dir]; 
-
-    Real dx_alpha = 0.5*( use_dx[0][0] ); 
-    dx_alpha /= ( sqrt(pow(-gu[0][0],3)) ); 
-
-    Real dx_beta[3];
-    for (int ii=0; ii<3; ++ii){
-      dx_beta[ii] = -( use_dx[0][ii+1] )/( gu[0][0] );
-      dx_beta[ii] += gu[0][ii+1]*( use_dx[0][0] )/( SQR(gu[0][0]) );
-    }
-
-    Real dx_gamma[3][3];
-    for (int ii=0; ii<3; ++ii){
-      for (int ij=0; ij<3; ++ij){
-        dx_gamma[ii][ij] = ( use_dx[ii+1][ij+1] );
-        dx_gamma[ii][ij] -= 2.0*gu[0][ij+1]*( use_dx[0][ii+1] )/gu[0][0];
-        dx_gamma[ii][ij] += gu[0][ij+1]*gu[0][ii+1]*( use_dx[0][0] )/SQR(gu[0][0]);
-      }
-    }
-
-    RHS[dir] = -dx_alpha*gamma;
-    RHS[dir] += dx_beta[0]*u[0] + dx_beta[1]*u[1] + dx_beta[2]*u[2];
-    for (int ii=0; ii<3; ++ii){
-      for (int ij=0; ij<3; ++ij){
-        RHS[dir] -= 0.5*dx_gamma[ii][ij]*u[ii]*u[ij]/( gamma*sqrt(-gu[0][0]) );
-      }
-    }
+  for (int ii = 0; ii<3; ++ii) {
+    RHS[ii] = adm[ii][0]*u[0] + adm[ii][1]*u[1] + adm[ii][2]*u[2];
+    RHS[ii] /= gamma;
+    RHS[ii] += gupper[0][ii+1]/gupper[0][0];
   }
 
 	return;
 }
 
-//----------------------------------------------------------------------------------------
-//! \fn  void LUDecomposition
-//  \brief Compute Lower and Upper triangular metrices from original matrix
-KOKKOS_INLINE_FUNCTION
-void LUDecomposition( const int ndim, Real * LUMat, int * perm ){
-
-    for (int i = 0; i<ndim; ++i)
-      perm[i] = i;
-
-    for (int k = 0; k<ndim; ++k) {
-      int fixp = k;
-      Real maxval = fabs(LUMat[perm[k]*ndim + k]);
-      for (int i = k+1; i<ndim; ++i) {
-        Real thisval = fabs(LUMat[perm[i]*ndim + k]);
-        if (thisval > maxval) {
-          maxval = thisval;
-          fixp = i;
-        }
-      }
-
-      if (fixp != k) {
-        Real tmp = perm[fixp];
-        perm[fixp] = perm[k];
-        perm[k] = tmp;
-      }
-
-      for (int i = k+1; i<ndim; ++i) {
-        Real ratio = LUMat[perm[i]*ndim + k] / LUMat[perm[k]*ndim + k];
-        LUMat[perm[i]*ndim + k] = ratio;
-        for (int j = k+1; j<ndim; ++j)
-          LUMat[perm[i]*ndim + j] -= ratio * LUMat[perm[k]*ndim + j];
-      }
-    }
-
-    return;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  void FWDSubstitution
-//  \brief Compute Lower and Upper triangular metrices from original matrix
-KOKKOS_INLINE_FUNCTION
-void FWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * idArr, Real * outArr) {
-
-    for (int i = 0; i < ndim; ++i) {
-        Real sum = 0.0;
-        for (int j = 0; j < i; ++j)
-          sum += LUMat[perm[i]*ndim + j] * outArr[j];
-        
-        outArr[i] = idArr[perm[i]] - sum;
-    }
-
-    return;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  void BWDSubstitution
-//  \brief Compute Lower and Upper triangular metrices from original matrix
-KOKKOS_INLINE_FUNCTION
-void BWDSubstitution(const int ndim, const Real * LUMat, const int * perm, const Real * inArr, Real * outArr) {
-
-    for (int i = ndim-1; i >= 0; --i) {
-        Real sum = 0.0;
-        for (int j = i + 1; j < ndim; ++j)
-            sum += LUMat[perm[i]*ndim + j] * outArr[j];
-        outArr[i] = (inArr[i] - sum)/LUMat[perm[i]*ndim + i];
-    }
-
-    return;
-}
-
-//----------------------------------------------------------------------------------------
-//! \fn  void InvertMatrix
-//  \brief Compute the inverse of an nxn matrix
-KOKKOS_INLINE_FUNCTION
-void InvertMatrixLU( const int ndim, const Real * inputMat, Real * outputMat ){
-
-  // Because ndim is determined at runtime
-  // Use 1D arrays and deal manually with column/row
-  Real LUMat[6*6];
-  Real x[6];
-  Real y[6];
-  Real e[6];
-  int perm_arr[6];
-  
-  for (int ii = 0; ii<ndim*ndim; ++ii) {
-    LUMat[ii] = inputMat[ii];
-  }
-
-  LUDecomposition(ndim, LUMat, perm_arr);
-
-  for (int i = 0; i < ndim; ++i) {
-    for (int ii = 0; ii<ndim; ++ii)
-      e[ii] = 0.0;
-    e[i] = 1.0;
-
-    FWDSubstitution(ndim, LUMat, perm_arr, e, x);
-    BWDSubstitution(ndim, LUMat, perm_arr, x, y);
-
-    for (int j = 0; j < ndim; ++j)
-        outputMat[j*ndim + i] = y[j];
-  }
-
-  return;
-}
-=======
 #endif
->>>>>>> particles_gr
