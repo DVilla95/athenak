@@ -24,7 +24,7 @@ class MHD;
 class EquationOfState;
 
 // constants that enumerate ParticlesPusher options
-enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, boris_gr, ham_geo, gca_gr, imr};
+enum class ParticlesPusher {drift, leap_frog, lagrangian_tracer, lagrangian_mc, ham_geo, gca_gr, imr};
 
 // constants that enumerate ParticleTypes
 enum class ParticleType {cosmic_ray};

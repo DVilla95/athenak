@@ -65,9 +65,6 @@ Particles::Particles(MeshBlockPack *ppack, ParameterInput *pin) :
   min_radius = pin->GetOrAddReal("particles", "min_radius", 2.0); // Determines when particles have fallen inside the BH
   if (ppush.compare("drift") == 0) {
     pusher = ParticlesPusher::drift;
-  } else if (ppush.compare("boris_gr") == 0) {
-    charge_over_mass = pin->GetOrAddReal("particles", "charge_over_mass", 1.0);
-    pusher = ParticlesPusher::boris_gr;
   } else if (ppush.compare("ham_geo") == 0) {
     max_iter = pin->GetOrAddInteger("particles", "max_iter", 10);
     iter_tolerance = pin->GetOrAddReal("particles", "iter_tolerance", 1.0E-7);

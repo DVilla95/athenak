@@ -51,12 +51,6 @@ TaskStatus Particles::Push(Driver *pdriver, int stage) {
 
     break;
     
-    case ParticlesPusher::boris_gr:
-      BorisStepGR(dt_/2.0, true);
-      HamiltonianGeodesicsIterations(dt_);
-      BorisStepGR(dt_/2.0, true);
-    break;
-
     case ParticlesPusher::ham_geo:
       HamiltonianGeodesicsIterations(dt_);
     break;
