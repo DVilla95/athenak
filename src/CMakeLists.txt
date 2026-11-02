@@ -31,8 +31,22 @@ add_executable(
         coordinates/coordinates.cpp
         coordinates/excision.cpp
 
+        cyclic_zoom/cyclic_zoom.cpp
+        cyclic_zoom/zoom_criteria.cpp
+        cyclic_zoom/zoom_data.cpp
+        cyclic_zoom/zoom_datablock.cpp
+        cyclic_zoom/zoom_fluxes.cpp
+        cyclic_zoom/zoom_loadbalance.cpp
+        cyclic_zoom/zoom_mesh.cpp
+        cyclic_zoom/zoom_refinement.cpp
+        cyclic_zoom/zoom_region.cpp
+        cyclic_zoom/zoom_restart.cpp
+        cyclic_zoom/zoom_srcterms.cpp
+
+        diffusion/ambipolar.cpp
         diffusion/conduction.cpp
         diffusion/resistivity.cpp
+        diffusion/sts_rkl2.cpp
         diffusion/viscosity.cpp
 
         driver/driver.cpp
@@ -50,18 +64,24 @@ add_executable(
         eos/ideal_grhyd.cpp
         eos/ideal_srmhd.cpp
         eos/ideal_grmhd.cpp
+        eos/noop_dyngrmhd.cpp
         eos/primitive-solver/eos_compose.cpp
+        eos/primitive-solver/eos_hybrid.cpp
         eos/primitive-solver/piecewise_polytrope.cpp
         eos/primitive-solver/unit_system.cpp
 
         geodesic-grid/geodesic_grid.cpp
         geodesic-grid/spherical_grid.cpp
-	geodesic-grid/gauss_legendre.cpp
+        geodesic-grid/gauss_legendre.cpp
+
+        gravity/gravity.cpp
+        gravity/mg_gravity.cpp
 
         hydro/hydro.cpp
         hydro/hydro_fluxes.cpp
         hydro/hydro_fofc.cpp
         hydro/hydro_newdt.cpp
+        hydro/hydro_sts.cpp
         hydro/hydro_tasks.cpp
         hydro/hydro_update.cpp
 
@@ -75,6 +95,12 @@ add_executable(
         mesh/meshblock_pack.cpp
         mesh/meshblock_tree.cpp
         mesh/mesh_refinement.cpp
+        mesh/refinement_criteria.cpp
+
+        multigrid/multigrid.cpp
+        multigrid/multigrid_bvals.cpp
+        multigrid/multigrid_driver.cpp
+        multigrid/multigrid_tasks.cpp
 
         mhd/mhd.cpp
         mhd/mhd_corner_e.cpp
@@ -82,6 +108,7 @@ add_executable(
         mhd/mhd_fluxes.cpp
         mhd/mhd_fofc.cpp
         mhd/mhd_newdt.cpp
+        mhd/mhd_sts.cpp
         mhd/mhd_tasks.cpp
         mhd/mhd_update.cpp
 
@@ -95,6 +122,7 @@ add_executable(
         outputs/formatted_table.cpp
         outputs/history.cpp
         outputs/restart.cpp
+        outputs/spherical_surface.cpp
         outputs/coarsened_binary.cpp
         outputs/track_prtcl.cpp
         outputs/vtk_mesh.cpp
@@ -112,19 +140,28 @@ add_executable(
 
         pgen/pgen.cpp
         pgen/tests/advection.cpp
-        pgen/tests/collapse.cpp
         pgen/tests/cpaw.cpp
+        pgen/tests/cshock.cpp
+        pgen/tests/divb_amr.cpp
         pgen/tests/diffusion.cpp
         pgen/tests/gr_bondi.cpp
         pgen/tests/gr_monopole.cpp
         pgen/tests/linear_wave.cpp
         pgen/tests/lw_implode.cpp
         pgen/tests/orszag_tang.cpp
+        pgen/tests/mri3d.cpp
         pgen/tests/shock_tube.cpp
-        pgen/tests/rad_check_tetrad.cpp
-        pgen/tests/rad_hohlraum.cpp
+        pgen/tests/shwave.cpp
+        pgen/tests/rad_beam.cpp
         pgen/tests/rad_linear_wave.cpp
+        pgen/tests/z4c_boosted_puncture.cpp
         pgen/tests/z4c_linear_wave.cpp
+        pgen/tests/jeans_wave.cpp
+        pgen/tests/binary_gravity.cpp
+        pgen/tests/be_collapse.cpp
+
+        pgen/unit_tests/eos_compose.cpp
+        pgen/unit_tests/gauss_legendre.cpp
 
         radiation/radiation.cpp
         radiation/radiation_fluxes.cpp
@@ -137,6 +174,7 @@ add_executable(
         shearing_box/orbital_advection.cpp
         shearing_box/orbital_advection_cc.cpp
         shearing_box/orbital_advection_fc.cpp
+        shearing_box/orbital_advection_tasks.cpp
         shearing_box/shearing_box.cpp
         shearing_box/shearing_box_cc.cpp
         shearing_box/shearing_box_fc.cpp
@@ -151,13 +189,19 @@ add_executable(
 
         units/units.cpp
         utils/change_rundir.cpp
+        utils/derived_vars.cpp
         utils/show_config.cpp
         utils/lagrange_interpolator.cpp
+        utils/tov/tov.cpp
         utils/tr_table.cpp
         utils/cart_grid.cpp
+        utils/watchdog.cpp
+        utils/spherical_surface.cpp
+
 
         z4c/compact_object_tracker.cpp
-        z4c/horizon_dump.cpp
+        z4c/fastflow.cpp
+	    z4c/horizon_dump.cpp
         z4c/tmunu.cpp
         z4c/z4c.cpp
         z4c/z4c_adm.cpp
@@ -171,6 +215,7 @@ add_executable(
         z4c/z4c_wave_extr.cpp
         z4c/z4c_amr.cpp
         z4c/cce/cce.cpp
+        z4c/driftcontrol/driftcontrol.cpp
 )
 
 # custom problem generator to be included in compile

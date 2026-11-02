@@ -16,6 +16,7 @@
 #include <string>
 
 #include "athena.hpp"
+#include "diffusion/sts_types.hpp"
 
 // Define following structure before other "include" files to resolve declarations
 //----------------------------------------------------------------------------------------
@@ -84,6 +85,7 @@ class Mesh;
 #include "meshblock_pack.hpp"
 #include "meshblock_tree.hpp"
 #include "mesh_refinement.hpp"
+#include "cyclic_zoom/cyclic_zoom.hpp"
 
 //----------------------------------------------------------------------------------------
 //! \class Mesh
@@ -97,7 +99,7 @@ class Mesh {
   friend class MeshBlockTree;
   friend class MeshRefinement;
   // needs to access tree to find target MB offset by shear
-  friend class ShearingBoxBoundary;
+  friend class ShearingBox;
 
  public:
   explicit Mesh(ParameterInput *pin);
@@ -140,7 +142,8 @@ class Mesh {
   // following 1x arrays allocated with length [nranks] in AddCoordinatesAndPhysics()
   int *nprtcl_eachrank;    // number of particles on each rank
 
-  Real time, dt, dtold, cfl_no;
+  Real time, dt, dtold, dt_last_completed, dt_parabolic_sts, sts_max_dt_ratio, cfl_no;
+  parabolic::STSIntegrator sts_integrator;
   int ncycle;
   int ndiag;
   EventCounters ecounter;
@@ -149,6 +152,7 @@ class Mesh {
   MeshBlockPack* pmb_pack;                 // container for MeshBlocks on this rank
   std::unique_ptr<ProblemGenerator> pgen;  // class containing functions to set ICs
   MeshRefinement *pmr=nullptr;             // mesh refinement data/functions (if needed)
+  CyclicZoom *pzoom=nullptr;               // cyclic zoom data/functions (if needed)
 
   // functions
   void BuildTreeFromScratch(ParameterInput *pin);
@@ -157,8 +161,10 @@ class Mesh {
   void PrintMeshDiagnostics();
   void WriteMeshStructure();
   void NewTimeStep(const Real tlim);
+  void RefreshSTSParabolicTimeStep();
   void AddCoordinatesAndPhysics(ParameterInput *pinput);
   void UpdatePrtclInfo();
+  void AddCyclicZoom(ParameterInput *pin);
   BoundaryFlag GetBoundaryFlag(const std::string& input_string);
   std::string GetBoundaryString(BoundaryFlag input_flag);
 
@@ -177,9 +183,15 @@ class Mesh {
   int NumberOfMeshBlockCells() const {
     return (mb_indcs.nx1)*(mb_indcs.nx2)*(mb_indcs.nx3);
   }
+  // Monotonic counter of mesh-topology update events (AMR and any resulting load
+  // balancing). Used by the rank-packed boundary communication path to detect when
+  // its cached communication metadata must be rebuilt.
+  void MarkMeshUpdated() { ++amr_lb_seq_; }
+  int GetAMRLoadBalanceUpdateSeq() const { return amr_lb_seq_; }
 
  private:
   std::unique_ptr<MeshBlockTree> ptree;  // pointer to root node in binary/quad/oct-tree
   void LoadBalance(float *clist, int *rlist, int *slist, int *nlist, int nb);
+  int amr_lb_seq_ = 0;
 };
 #endif  // MESH_MESH_HPP_
